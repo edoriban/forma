@@ -1,0 +1,29 @@
+[workspace]
+resolver = "3"
+members = ["crates/forma-core"]
+
+[workspace.package]
+edition = "2024"
+rust-version = "1.88"
+license = "MIT"
+repository = "https://github.com/edoriban/forma"
+
+[workspace.dependencies]
+# intentionally near-empty registry; future crates use workspace = true
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
+
+[workspace.lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+# conservative allow-list (each deviation gets an inline comment at first use site too):
+allow_attributes_without_reason = "warn"
+module_name_repetitions = "allow" # types/{string,number,bool}.rs naming is intentional
+missing_errors_doc = "allow" # parse()/validate_value() docs cover error cases explicitly
+single_match_else = "allow"
+
+[profile.release]
+lto = "thin" # wasm-friendly size/perf balance
+codegen-units = 1
+strip = "debuginfo"
