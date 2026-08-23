@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/forma-core"]
+members = ["crates/forma-core", "crates/forma-signals"]
 
 [workspace.package]
 edition = "2024"
@@ -10,6 +10,8 @@ repository = "https://github.com/edoriban/forma"
 
 [workspace.dependencies]
 # intentionally near-empty registry; future crates use workspace = true
+forma-core = { path = "crates/forma-core", version = "0.1.0" }
+reactive_graph = { version = "0.2", default-features = false }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

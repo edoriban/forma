@@ -28,7 +28,11 @@ pub trait Schema {
 ///
 /// Both views execute from the same internal representation, so results always
 /// agree with the typed path (SC-9). Usable as `Box<dyn DynSchema>`.
-pub trait DynSchema {
+///
+/// The `Send + Sync` supertraits make erased schemas thread-safe and safe to
+/// hold in reactive/memo contexts (`Arc<Box<dyn DynSchema>>` captured by
+/// shared closures), so introspection can be cached across threads.
+pub trait DynSchema: Send + Sync {
     /// Validates an erased value; issues mirror what the typed parse would report.
     fn validate_value(&self, v: &Value) -> Vec<FormaIssue>;
     /// Introspection node describing this schema's kind and constraints,

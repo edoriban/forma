@@ -1,7 +1,9 @@
 //! Custom validation rules that compose identically to built-in checks.
 //!
 //! Rules observe post-normalization values, return rejection data, and are
-//! stored boxed inside schemas. Sync-only by signature (no async types).
+//! stored boxed inside schemas. Sync-only by signature (no async types), and
+//! every `Rule` is `Send + Sync`: rules may be validated from any thread and
+//! shared across threads via `Arc` without additional bounds.
 //!
 //! ```
 //! use forma_core::error::IssueCode;
@@ -52,7 +54,13 @@ pub struct RefineRejection {
 ///
 /// Rules observe post-normalization values and run strictly after builtin
 /// checks. Sync-only by signature (RF-3): no future/async types exist here.
-pub trait Rule<T: ?Sized>: fmt::Debug {
+///
+/// The `Send + Sync` supertraits guarantee that every erased view
+/// (`Box<dyn Rule<T>>`, `&dyn Rule<T>`, `Arc<dyn Rule<T>>`) is usable from
+/// multiple threads. This is a breaking contract for hypothetical custom
+/// impls holding `!Send`/`!Sync` state; pre-1.0 this may change in a minor
+/// release.
+pub trait Rule<T: ?Sized>: fmt::Debug + Send + Sync {
     /// Stable identifier surfaced in `shape()` and issue params.
     fn name(&self) -> &'static str;
 
