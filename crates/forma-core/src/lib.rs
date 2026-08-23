@@ -1,0 +1,31 @@
+//! Schema validation for Rust, composed with a fluent builder API.
+//!
+//! A schema is a *value* you build, compose, and pass around:
+//!
+//! ```rust
+//! use forma_core::prelude::*;
+//!
+//! let s = string().trim().min(2).max(5);
+//! assert!(s.parse(&"ab".to_string()).is_ok());
+//! ```
+//!
+//! Every builder simultaneously implements the typed [`Schema`] trait and the
+//! object-safe [`DynSchema`] erased view from one internal representation, so
+//! both views always agree.
+
+/// String-to-type coercion schemas.
+pub mod coerce;
+/// Error model: accumulated, path-addressed issues.
+pub mod error;
+/// Curated re-exports for typical users.
+pub mod prelude;
+/// Custom validation rules that compose identically to built-in checks.
+pub mod rule;
+/// The two validation views and their shared introspection types.
+pub mod schema;
+/// Primitive schema builders and their constructors.
+pub mod types;
+/// Pragmatic hand-rolled format validators (no regex dependency in v0).
+pub mod validators;
+/// Dependency-free dynamic value tree and its accessors.
+pub mod value;
