@@ -54,9 +54,13 @@ struct ResetTargets {
 /// created owner-less (headless) are never disposed — acceptable because the
 /// controller lives for the form's lifetime.
 ///
-/// v0 fields start from an empty-string `Value` snapshot taken at
-/// registration; that snapshot anchors [`FieldHandle::dirty`] and
-/// [`FormController::reset`].
+/// v0 fields anchor their state to a `Value` snapshot taken at registration;
+/// that snapshot anchors [`FieldHandle::dirty`], [`FormController::reset`],
+/// and the server-baseline comparison. Default registration snapshots the
+/// empty-string `Value`; [`FormController::register_initial`] and
+/// [`FormController::register_initial_with`] snapshot a caller-supplied
+/// value instead (for prefilled fields). The snapshot is immutable after
+/// registration.
 #[derive(Clone)]
 pub struct FormController {
     pub(crate) inner: Arc<Inner>,
@@ -113,7 +117,7 @@ impl FormController {
         path: FieldPath,
         schema: Box<dyn DynSchema>,
     ) -> Result<FieldHandle, RegisterError> {
-        self.register_inner(path, schema, None)
+        self.register_inner(path, schema, None, Value::from(""))
     }
 
     /// Registers a field with an explicit timing mode overriding the
@@ -128,7 +132,51 @@ impl FormController {
         schema: Box<dyn DynSchema>,
         validate_on: ValidateOn,
     ) -> Result<FieldHandle, RegisterError> {
-        self.register_inner(path, schema, Some(validate_on))
+        self.register_inner(path, schema, Some(validate_on), Value::from(""))
+    }
+
+    /// Registers a prefilled field using the controller-default timing mode,
+    /// with `initial` as the dirty/reset/server-baseline anchor instead of
+    /// the empty-string default. The snapshot is immutable after
+    /// registration — no re-anchoring API exists.
+    ///
+    /// `initial` is NOT validated against the field's schema at registration
+    /// time; if it violates constraints, the error memo reports those issues
+    /// immediately (identical to registering then setting the value).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`RegisterError::Duplicate`] if `path` is already registered;
+    /// the existing field is left untouched.
+    pub fn register_initial(
+        &mut self,
+        path: FieldPath,
+        schema: Box<dyn DynSchema>,
+        initial: Value,
+    ) -> Result<FieldHandle, RegisterError> {
+        self.register_inner(path, schema, None, initial)
+    }
+
+    /// Same as [`FormController::register_initial`] plus an explicit timing
+    /// mode overriding the controller default, symmetric with
+    /// [`FormController::register_with`].
+    ///
+    /// `initial` is NOT validated against the field's schema at registration
+    /// time; if it violates constraints, the error memo reports those issues
+    /// immediately (identical to registering then setting the value).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`RegisterError::Duplicate`] if `path` is already registered;
+    /// the existing field is left untouched.
+    pub fn register_initial_with(
+        &mut self,
+        path: FieldPath,
+        schema: Box<dyn DynSchema>,
+        validate_on: ValidateOn,
+        initial: Value,
+    ) -> Result<FieldHandle, RegisterError> {
+        self.register_inner(path, schema, Some(validate_on), initial)
     }
 
     fn register_inner(
@@ -136,8 +184,8 @@ impl FormController {
         path: FieldPath,
         schema: Box<dyn DynSchema>,
         override_on: Option<ValidateOn>,
+        initial: Value,
     ) -> Result<FieldHandle, RegisterError> {
-        let initial = Value::from("");
         let value = ArcRwSignal::new(initial.clone());
         let touched = ArcRwSignal::new(false);
         let server = ArcRwSignal::new(Vec::<FormaIssue>::new());

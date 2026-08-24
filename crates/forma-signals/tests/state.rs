@@ -70,6 +70,62 @@ fn fsm4_preset_initial_value_not_dirty() {
 }
 
 #[test]
+fn fsm4_register_initial_preset_lifecycle_dirty_tracks_snapshot() {
+    let mut c = controller();
+    c.register_initial(
+        FieldPath::key("name"),
+        Box::new(string()),
+        Value::from("preset"),
+    )
+    .unwrap();
+    let h = c.field(&FieldPath::key("name")).unwrap();
+    assert!(
+        !h.dirty().get(),
+        "field registered with preset must start clean"
+    );
+    h.value().set(Value::from("other"));
+    assert!(h.dirty().get());
+    h.value().set(Value::from("preset"));
+    assert!(
+        !h.dirty().get(),
+        "write-back to the preset initial clears dirty"
+    );
+}
+
+#[test]
+fn fsm4_reset_anchors_to_the_registered_preset_value() {
+    let mut c = controller();
+    c.register_initial(
+        FieldPath::key("name"),
+        Box::new(string()),
+        Value::from("preset"),
+    )
+    .unwrap();
+    let h = c.field(&FieldPath::key("name")).unwrap();
+    h.value().set(Value::from("other"));
+    assert!(h.dirty().get());
+    c.reset();
+    let h = c.field(&FieldPath::key("name")).unwrap();
+    assert_eq!(
+        h.value().get(),
+        Value::from("preset"),
+        "reset restores preset"
+    );
+    assert!(!h.dirty().get());
+}
+
+#[test]
+fn fsm4_legacy_register_keeps_empty_string_anchor() {
+    let mut c = controller();
+    c.register(FieldPath::key("name"), Box::new(string()))
+        .unwrap();
+    let h = c.field(&FieldPath::key("name")).unwrap();
+    assert_eq!(h.value().get(), Value::from(""), "legacy anchor unchanged");
+    h.value().set(Value::from("edited"));
+    assert!(h.dirty().get());
+}
+
+#[test]
 fn fsm5_error_memo_tracks_value_edits() {
     let mut c = controller();
     c.register(FieldPath::key("email"), Box::new(string().min(8).email()))

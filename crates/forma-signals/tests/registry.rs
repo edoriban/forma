@@ -63,6 +63,100 @@ fn fsm1_handle_write_reaches_controller_state() {
 }
 
 #[test]
+fn fsa4_register_initial_returns_handle_and_lookup_some_clean() {
+    let mut c = controller();
+    let handle = c
+        .register_initial(
+            FieldPath::key("email"),
+            Box::new(string()),
+            Value::from("me@x.dev"),
+        )
+        .expect("fresh preset registration");
+    assert_eq!(handle.path(), &FieldPath::key("email"));
+    let looked_up = c.field(&FieldPath::key("email"));
+    assert!(looked_up.is_some());
+    assert!(
+        !looked_up.unwrap().dirty().get(),
+        "preset field must read clean immediately"
+    );
+}
+
+#[test]
+fn fsa4_register_initial_with_applies_validate_on_override_clean() {
+    let mut c = controller();
+    c.register_initial_with(
+        FieldPath::key("email"),
+        Box::new(string()),
+        ValidateOn::Change,
+        Value::from("preset"),
+    )
+    .unwrap();
+    assert_eq!(
+        c.effective_validate_on(&FieldPath::key("email")),
+        Some(ValidateOn::Change),
+        "explicit timing override must win"
+    );
+    assert!(!c.field(&FieldPath::key("email")).unwrap().dirty().get());
+}
+
+#[test]
+fn fsa4_duplicate_via_register_initial_rejected_prior_field_intact() {
+    let mut c = controller();
+    c.register_initial(
+        FieldPath::key("email"),
+        Box::new(string()),
+        Value::from("keep"),
+    )
+    .unwrap();
+    c.field(&FieldPath::key("email"))
+        .unwrap()
+        .value()
+        .set(Value::from("edited"));
+    let Err(dup) = c.register_initial(
+        FieldPath::key("email"),
+        Box::new(string()),
+        Value::from("x"),
+    ) else {
+        panic!("expected Duplicate error, got Ok");
+    };
+    match dup {
+        RegisterError::Duplicate { path } => {
+            assert_eq!(path, FieldPath::key("email"));
+        }
+    }
+    c.reset();
+    let h = c.field(&FieldPath::key("email")).unwrap();
+    assert_eq!(
+        h.value().get(),
+        Value::from("keep"),
+        "existing field's anchor untouched by the rejected duplicate"
+    );
+    assert!(!h.dirty().get());
+}
+
+#[test]
+fn fsa4_invalid_preset_surfaces_errors_without_rejection() {
+    let mut c = controller();
+    let handle = c
+        .register_initial(
+            FieldPath::key("bio"),
+            Box::new(string().min(10)),
+            Value::from("ab"),
+        )
+        .expect("schema-violating preset must still register");
+    let codes: Vec<_> = handle
+        .errors()
+        .get()
+        .iter()
+        .map(|i| i.code.clone())
+        .collect();
+    assert!(
+        codes.contains(&IssueCode::Min),
+        "preset violation must surface immediately, got {codes:?}"
+    );
+}
+
+#[test]
 fn fsm1_reset_restores_controller_wide_consistency() {
     let mut c = controller();
     for name in ["a", "b"] {

@@ -80,6 +80,43 @@ fn fss5_value_edit_clears_that_fields_stale_server_issues() {
 }
 
 #[test]
+fn fsa4_server_baseline_follows_the_registered_preset() {
+    let mut c = FormController::new(ValidateOn::Blur);
+    c.register_initial(
+        FieldPath::key("email"),
+        Box::new(string()),
+        Value::from("P"),
+    )
+    .unwrap();
+    let path = FieldPath::key("email");
+    let err = FormaError {
+        issues: vec![issue(path.clone(), IssueCode::Refine, "taken")],
+    };
+    c.apply_server_errors(&err);
+    let h = c.field(&path).unwrap();
+    assert!(
+        !h.visible_errors().get().is_empty(),
+        "server issue visible while value sits on the preset baseline"
+    );
+    h.value().set(Value::from("away"));
+    assert!(
+        !h.visible_errors()
+            .get()
+            .iter()
+            .any(|i| i.message == "taken"),
+        "edit away from the preset hides the server issue"
+    );
+    h.value().set(Value::from("P"));
+    assert!(
+        h.visible_errors()
+            .get()
+            .iter()
+            .any(|i| i.message == "taken"),
+        "returning to the preset makes the server issue visible again"
+    );
+}
+
+#[test]
 fn fss5_reapply_replaces_not_appends_server_cells() {
     let mut c = FormController::new(ValidateOn::Blur);
     c.register(FieldPath::key("a"), Box::new(string())).unwrap();
