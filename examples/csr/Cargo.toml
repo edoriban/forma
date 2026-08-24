@@ -1,0 +1,15 @@
+[package]
+name = "forma-csr-example"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Minimal standalone Leptos 0.8 CSR example consuming forma-ui."
+
+# Deliberately NOT a workspace member: keeps `cargo test --workspace` fast and
+# lets this example pin its own leptos feature set (`csr`) independently.
+[workspace]
+
+[dependencies]
+forma-ui = { path = "../../crates/forma-ui" }
+forma-core = { path = "../../crates/forma-core" }
+leptos = { version = "0.8", default-features = false, features = ["csr"] }
