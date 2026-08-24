@@ -11,7 +11,19 @@
 //!
 //! Every builder simultaneously implements the typed [`Schema`] trait and the
 //! object-safe [`DynSchema`] erased view from one internal representation, so
-//! both views always agree.
+//! both views always agree. Object schemas compose any builder family into
+//! struct-shaped validation over an ordered [`Value::Object`]:
+//!
+//! ```rust
+//! use forma_core::prelude::*;
+//! use forma_core::value::{Object, ToValue};
+//!
+//! let user = object()
+//!     .field("name", string().min(1).label("Full name"))
+//!     .field("age", coerced::<u32>());
+//! ```
+//!
+//! [`Value::Object`]: forma_core::value::Value::Object
 
 /// String-to-type coercion schemas.
 pub mod coerce;

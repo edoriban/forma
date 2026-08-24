@@ -4,7 +4,7 @@ use std::sync::OnceLock;
 
 use crate::error::{FormaError, FormaIssue, IssueCode};
 use crate::schema::{ConstraintDesc, DynSchema, FieldMeta, Schema, ShapeKind, ShapeNode};
-use crate::value::Value;
+use crate::value::{ToValue, Value};
 
 /// Parses strings into `T: FromStr` — the duality citizen with
 /// `Input = String`, `Output = T` (SC-8), mirroring HTML form input.
@@ -138,6 +138,41 @@ impl<T: FromStr + 'static> DynSchema for CoercedSchema<T> {
 pub fn coerced<T: FromStr>() -> CoercedSchema<T> {
     CoercedSchema::default()
 }
+
+impl<T: FromStr + ToValue + 'static> crate::schema::ObjectChild for CoercedSchema<T> {
+    fn validate_at(
+        &self,
+        v: &Value,
+        path: &crate::error::FieldPath,
+        _fail_fast: bool,
+    ) -> Result<Value, Vec<FormaIssue>> {
+        match Self::bridge(v) {
+            Ok(Some(s)) => match Self::coerce(s) {
+                Ok(t) => Ok(t.to_value()),
+                Err(mut issue) => {
+                    issue.path = path.clone();
+                    Err(vec![issue])
+                }
+            },
+            _ => Err(vec![FormaIssue {
+                path: path.clone(),
+                code: IssueCode::TypeMismatch,
+                message: "value is not a string".into(),
+                params: Vec::new(),
+            }]),
+        }
+    }
+
+    fn shape_node(&self) -> ShapeNode {
+        self.shape().clone()
+    }
+
+    fn meta(&self) -> &FieldMeta {
+        &self.meta
+    }
+}
+
+impl<T: FromStr + ToValue> crate::schema::sealed::Sealed for CoercedSchema<T> {}
 
 #[cfg(test)]
 mod tests {

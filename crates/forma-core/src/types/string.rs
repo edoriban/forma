@@ -189,8 +189,14 @@ impl StringSchema {
     }
 
     fn run_checks(&self, raw: &str, path: &FieldPath) -> Vec<FormaIssue> {
+        self.run_checks_with(raw, path, self.fail_fast)
+    }
+
+    /// Path/fail-fast-parameterized kernel: object schemas call this with a
+    /// joined path and an inherited fail-fast flag (D2).
+    fn run_checks_with(&self, raw: &str, path: &FieldPath, fail_fast: bool) -> Vec<FormaIssue> {
         let value = if self.trim { raw.trim() } else { raw };
-        let mut sink = Sink::new(path, self.fail_fast);
+        let mut sink = Sink::new(path, fail_fast);
         for check in &self.checks {
             if let Some(issue) = evaluate_check(check, value)
                 && !sink.push(issue)
@@ -376,6 +382,41 @@ fn params_of_check(c: &StrCheck) -> IssueParams {
 pub fn string() -> StringSchema {
     StringSchema::default()
 }
+
+impl crate::schema::ObjectChild for StringSchema {
+    fn validate_at(
+        &self,
+        v: &Value,
+        path: &FieldPath,
+        fail_fast: bool,
+    ) -> Result<Value, Vec<FormaIssue>> {
+        match Self::bridge(v) {
+            Ok(s) => {
+                let issues = self.run_checks_with(s, path, fail_fast);
+                if issues.is_empty() {
+                    Ok(Value::from(s))
+                } else {
+                    Err(issues)
+                }
+            }
+            Err(code) => Err(vec![FormaIssue {
+                path: path.clone(),
+                code,
+                message: "value is not a string".into(),
+                params: Vec::new(),
+            }]),
+        }
+    }
+
+    fn shape_node(&self) -> ShapeNode {
+        self.shape().clone()
+    }
+
+    fn meta(&self) -> &FieldMeta {
+        &self.meta
+    }
+}
+impl crate::schema::sealed::Sealed for StringSchema {}
 
 #[cfg(test)]
 mod tests {

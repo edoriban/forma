@@ -40,3 +40,21 @@ fn ss5_memo_capturable_schema() {
     let s: Arc<Box<dyn DynSchema>> = Arc::new(Box::new(string().min(3)));
     assert_fn_send_sync_static(move || drop(s.clone()));
 }
+
+// ----------------------------------------------- DV-8: object family probes
+
+#[test]
+fn dv8_object_schema_is_send_sync() {
+    assert_send_sync::<forma_core::types::ObjectSchema>();
+
+    let schema = object()
+        .field("name", string().min(1).refine(|s| !s.is_empty()))
+        .field("age", forma_core::coerce::coerced::<u32>())
+        .field("sub", object().field("ok", bool().equals(true)));
+    assert_send_sync::<forma_core::types::ObjectSchema>();
+    assert_send_sync::<Box<dyn DynSchema>>();
+
+    let erased: Box<dyn DynSchema> = Box::new(schema);
+    let arc: Arc<Box<dyn DynSchema>> = Arc::new(erased);
+    assert_fn_send_sync_static(move || drop(arc.clone()));
+}

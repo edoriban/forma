@@ -1,8 +1,9 @@
 //! The two validation views and their shared introspection types.
 
 use std::borrow::Cow;
+use std::fmt;
 
-use crate::error::{FormaError, FormaIssue, IssueCode, IssueParams};
+use crate::error::{FieldPath, FormaError, FormaIssue, IssueCode, IssueParams};
 use crate::value::Value;
 
 #[diagnostic::on_unimplemented(
@@ -13,7 +14,9 @@ use crate::value::Value;
 ///
 /// `Err` always carries at least one issue. v0 primitives set
 /// `Input == Output`; [`crate::coerce::CoercedSchema`] is the first
-/// transform-shaped citizen (`Input = String`, `Output = T`).
+/// transform-shaped citizen (`Input = String`, `Output = T`), and
+/// [`crate::types::object::ObjectSchema`] makes the ordered [`crate::value::Object`]
+/// the struct-shaped currency (`Input = Object`, `Output = Object`).
 pub trait Schema {
     /// What the schema consumes.
     type Input;
@@ -65,6 +68,49 @@ pub enum ShapeKind {
     Bool,
     /// Coercing string-to-type schema.
     Coerced,
+    /// Object schema; declared fields in declaration order.
+    Object {
+        /// Declared fields, derived from the same registry the kernel walks.
+        fields: Vec<ObjectFieldDesc>,
+    },
+}
+
+/// One declared object field as introspection data — key plus the child's
+/// own shape projection, taken from the same `Vec` the kernel walks so
+/// introspection cannot drift (DV-6).
+#[derive(Clone, Debug, PartialEq)]
+pub struct ObjectFieldDesc {
+    /// Declared key (same `Box<str>` as the kernel's field registry).
+    pub key: Box<str>,
+    /// Child projection, produced by the child's own `shape()`.
+    pub child: ShapeNode,
+}
+
+/// Sealing module: keeps the [`ObjectChild`] extension point crate-internal.
+pub mod sealed {
+    /// Prevents downstream implementations of [`super::ObjectChild`].
+    pub trait Sealed {}
+}
+
+/// Contract for anything that can back an [`crate::types::object::ObjectSchema`]
+/// field: path-aware validation with a fail-fast override, plus an
+/// introspection projection (D3).
+///
+/// Public only so the `ObjectSchema::field` signature is nameable; sealed,
+/// so only the builtin families implement it.
+pub trait ObjectChild: fmt::Debug + Send + Sync + sealed::Sealed {
+    /// Validates `v` addressed at `path` (already joined by the caller);
+    /// on full success returns the validated output converted to `Value`.
+    fn validate_at(
+        &self,
+        v: &Value,
+        path: &FieldPath,
+        fail_fast: bool,
+    ) -> Result<Value, Vec<FormaIssue>>;
+    /// Introspection projection (delegates to the child's own `shape()`).
+    fn shape_node(&self) -> ShapeNode;
+    /// UI-facing metadata slots of the child (serves `ObjectSchema::field_meta`).
+    fn meta(&self) -> &FieldMeta;
 }
 
 /// One declared constraint as data — derived from the same check vector the

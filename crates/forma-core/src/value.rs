@@ -63,6 +63,103 @@ impl Object {
     pub fn iter(&self) -> impl Iterator<Item = (&StringKey, &Value)> {
         self.entries.iter().map(|(k, v)| (k, v))
     }
+
+    /// Linear-scan lookup over the ordered entries; `Some` only when the
+    /// key is present (presence is structural — the value itself is not
+    /// inspected, so a present [`Value::Null`] still counts).
+    #[must_use]
+    pub fn get(&self, key: &str) -> Option<&Value> {
+        self.entries
+            .iter()
+            .find(|(k, _)| k.as_ref() == key)
+            .map(|(_, v)| v)
+    }
+}
+
+/// Lossless conversion of validated schema outputs into [`Value`]s.
+///
+/// Implemented for the realistic form-coercion targets; `u64`/`usize` are
+/// deliberately excluded because they do not fit the `I64` fidelity rules
+/// (DV-1) without silent truncation.
+///
+/// The exclusion is enforced at compile time: `coerced::<u64>()` is a valid
+/// standalone schema, but it cannot back an object field because the
+/// [`crate::schema::ObjectChild`] impl requires `T: ToValue`.
+///
+/// ```compile_fail,E0277
+/// use forma_core::prelude::*;
+///
+/// let _ = object().field("n", coerced::<u64>()); // u64 lacks ToValue
+/// ```
+pub trait ToValue {
+    /// Converts the value into its exact [`Value`] representation.
+    fn to_value(self) -> Value;
+}
+
+impl ToValue for i8 {
+    fn to_value(self) -> Value {
+        Value::I64(i64::from(self))
+    }
+}
+
+impl ToValue for i16 {
+    fn to_value(self) -> Value {
+        Value::I64(i64::from(self))
+    }
+}
+
+impl ToValue for i32 {
+    fn to_value(self) -> Value {
+        Value::I64(i64::from(self))
+    }
+}
+
+impl ToValue for i64 {
+    fn to_value(self) -> Value {
+        Value::I64(self)
+    }
+}
+
+impl ToValue for u8 {
+    fn to_value(self) -> Value {
+        Value::I64(i64::from(self))
+    }
+}
+
+impl ToValue for u16 {
+    fn to_value(self) -> Value {
+        Value::I64(i64::from(self))
+    }
+}
+
+impl ToValue for u32 {
+    fn to_value(self) -> Value {
+        Value::I64(i64::from(self))
+    }
+}
+
+impl ToValue for f32 {
+    fn to_value(self) -> Value {
+        Value::F64(f64::from(self))
+    }
+}
+
+impl ToValue for f64 {
+    fn to_value(self) -> Value {
+        Value::F64(self)
+    }
+}
+
+impl ToValue for String {
+    fn to_value(self) -> Value {
+        Value::String(self.into())
+    }
+}
+
+impl ToValue for bool {
+    fn to_value(self) -> Value {
+        Value::Bool(self)
+    }
 }
 
 impl Value {
@@ -135,7 +232,43 @@ impl From<f64> for Value {
 
 #[cfg(test)]
 mod tests {
-    use crate::value::{Object, Value};
+    use super::{Object, ToValue, Value};
+
+    #[test]
+    fn d5_get_finds_present_key() {
+        let mut o = Object::new();
+        o.insert("name", Value::String("Ada".into()));
+        assert_eq!(o.get("name"), Some(&Value::String("Ada".into())));
+    }
+
+    #[test]
+    fn d5_get_misses_absent_key() {
+        let mut o = Object::new();
+        o.insert("name", Value::String("Ada".into()));
+        assert_eq!(o.get("age"), None);
+    }
+
+    #[test]
+    fn d5_get_on_empty_object() {
+        let o = Object::new();
+        assert_eq!(o.get("anything"), None);
+    }
+
+    #[test]
+    fn d4_tovalue_mappings_are_pinned() {
+        assert_eq!((-1i8).to_value(), Value::I64(-1));
+        assert_eq!((-2i16).to_value(), Value::I64(-2));
+        assert_eq!((-3i32).to_value(), Value::I64(-3));
+        assert_eq!((-4i64).to_value(), Value::I64(-4));
+        assert_eq!(1u8.to_value(), Value::I64(1));
+        assert_eq!(2u16.to_value(), Value::I64(2));
+        assert_eq!(3u32.to_value(), Value::I64(3));
+        assert_eq!(0.5f32.to_value(), Value::F64(0.5));
+        assert_eq!(1.5f64.to_value(), Value::F64(1.5));
+        assert_eq!(String::from("hi").to_value(), Value::String("hi".into()));
+        assert_eq!(true.to_value(), Value::Bool(true));
+        assert_eq!(false.to_value(), Value::Bool(false));
+    }
 
     #[test]
     fn dv1_ordered_entries_preserved() {

@@ -413,3 +413,88 @@ fn dv5_coerced_parity_through_erasure() {
         check_erased("coerced", raw, valid, &value, boxed.as_ref());
     }
 }
+
+// ------------------------------------------------- DV-7/SC-9 object parity
+
+fn obj(pairs: &[(&str, Value)]) -> forma_core::value::Object {
+    let mut o = forma_core::value::Object::new();
+    for (k, v) in pairs {
+        o.insert(k, v.clone());
+    }
+    o
+}
+
+fn assert_object_parity(
+    schema: &forma_core::types::ObjectSchema,
+    input: &forma_core::value::Object,
+) {
+    use forma_core::schema::Schema;
+    let value = Value::Object(input.clone());
+    let typed = schema.parse(input).expect_err("expected rejection");
+    let erased = schema.validate_value(&value);
+    assert!(
+        !typed.issues.is_empty(),
+        "DV7: failing parse must carry issues"
+    );
+    assert_eq!(
+        typed.issues, erased,
+        "DV7 PARITY MISMATCH:\n  typed  : {:#?}\n  erased : {:#?}",
+        typed.issues, erased
+    );
+}
+
+#[test]
+fn dv7_flat_object_failing_field_parity() {
+    let schema = object().field("email", string().min(5));
+    assert_object_parity(&schema, &obj(&[("email", Value::from("ab"))]));
+}
+
+#[test]
+fn dv7_nested_object_of_object_parity() {
+    let schema = object().field("outer", object().field("inner", string().nonempty()));
+    assert_object_parity(
+        &schema,
+        &obj(&[("outer", Value::Object(obj(&[("inner", Value::from(""))])))]),
+    );
+}
+
+#[test]
+fn dv7_fail_fast_object_parity() {
+    let schema = object()
+        .fail_fast()
+        .field("a", string().min(10))
+        .field("b", string().min(10));
+    assert_object_parity(
+        &schema,
+        &obj(&[("a", Value::from("x")), ("b", Value::from("y"))]),
+    );
+}
+
+#[test]
+fn dv7_absent_key_required_parity() {
+    let schema = object().field("email", string().min(3));
+    assert_object_parity(&schema, &forma_core::value::Object::new());
+}
+
+#[test]
+fn dv7_null_present_parity() {
+    let schema = object().field("age", forma_core::coerce::coerced::<u32>());
+    assert_object_parity(&schema, &obj(&[("age", Value::Null)]));
+}
+
+#[test]
+fn dv7_erased_non_object_yields_type_mismatch_at_root() {
+    let boxed: Box<dyn DynSchema> = Box::new(object().field("x", string()));
+    let issues = boxed.validate_value(&Value::String("nope".into()));
+    assert_eq!(issues.len(), 1, "exactly one TypeMismatch");
+    assert_eq!(issues[0].code, IssueCode::TypeMismatch);
+    assert_eq!(issues[0].path, FieldPath::ROOT);
+}
+
+#[test]
+fn dv7_metadata_slot_unchanged_through_erasure() {
+    let boxed: Box<dyn DynSchema> = Box::new(object().label("User").description("account fields"));
+    let meta = boxed.metadata();
+    assert_eq!(meta.label.as_deref(), Some("User"));
+    assert_eq!(meta.description.as_deref(), Some("account fields"));
+}

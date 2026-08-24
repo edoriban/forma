@@ -30,6 +30,8 @@ pub trait NumberValue:
     #[doc(hidden)]
     fn to_param(self) -> ParamValue;
     #[doc(hidden)]
+    fn to_value(self) -> Value;
+    #[doc(hidden)]
     fn try_from_value(v: &Value) -> Option<Self>;
 }
 
@@ -45,6 +47,9 @@ impl NumberValue for f64 {
     }
     fn to_param(self) -> ParamValue {
         ParamValue::F64(self)
+    }
+    fn to_value(self) -> Value {
+        Value::F64(self)
     }
     fn try_from_value(v: &Value) -> Option<Self> {
         v.as_f64()
@@ -63,6 +68,9 @@ impl NumberValue for i64 {
     }
     fn to_param(self) -> ParamValue {
         ParamValue::I64(self)
+    }
+    fn to_value(self) -> Value {
+        Value::I64(self)
     }
     fn try_from_value(v: &Value) -> Option<Self> {
         v.as_i64()
@@ -224,7 +232,13 @@ impl<T: NumberValue> NumberSchema<T> {
     }
 
     fn run_checks(&self, value: T, path: &FieldPath) -> Vec<FormaIssue> {
-        let mut sink = Sink::new(path, self.fail_fast);
+        self.run_checks_with(value, path, self.fail_fast)
+    }
+
+    /// Path/fail-fast-parameterized kernel: object schemas call this with a
+    /// joined path and an inherited fail-fast flag (D2).
+    fn run_checks_with(&self, value: T, path: &FieldPath, fail_fast: bool) -> Vec<FormaIssue> {
+        let mut sink = Sink::new(path, fail_fast);
         for check in &self.checks {
             if let Some(issue) = evaluate_check(check, value)
                 && !sink.push(issue)
@@ -369,6 +383,41 @@ impl<T: NumberValue> DynSchema for NumberSchema<T> {
 pub fn number<T: NumberValue>() -> NumberSchema<T> {
     NumberSchema::default()
 }
+
+impl<T: NumberValue> crate::schema::ObjectChild for NumberSchema<T> {
+    fn validate_at(
+        &self,
+        v: &Value,
+        path: &FieldPath,
+        fail_fast: bool,
+    ) -> Result<Value, Vec<FormaIssue>> {
+        match Self::bridge(v) {
+            Ok(n) => {
+                let issues = self.run_checks_with(n, path, fail_fast);
+                if issues.is_empty() {
+                    Ok(n.to_value())
+                } else {
+                    Err(issues)
+                }
+            }
+            Err(code) => Err(vec![FormaIssue {
+                path: path.clone(),
+                code,
+                message: "value is not the expected number type".into(),
+                params: Vec::new(),
+            }]),
+        }
+    }
+
+    fn shape_node(&self) -> ShapeNode {
+        self.shape().clone()
+    }
+
+    fn meta(&self) -> &FieldMeta {
+        &self.meta
+    }
+}
+impl<T: NumberValue> crate::schema::sealed::Sealed for NumberSchema<T> {}
 
 #[cfg(test)]
 mod tests {

@@ -119,7 +119,13 @@ impl BoolSchema {
     }
 
     fn run_checks(&self, value: bool, path: &FieldPath) -> Vec<FormaIssue> {
-        let mut sink = Sink::new(path, self.fail_fast);
+        self.run_checks_with(value, path, self.fail_fast)
+    }
+
+    /// Path/fail-fast-parameterized kernel: object schemas call this with a
+    /// joined path and an inherited fail-fast flag (D2).
+    fn run_checks_with(&self, value: bool, path: &FieldPath, fail_fast: bool) -> Vec<FormaIssue> {
+        let mut sink = Sink::new(path, fail_fast);
         for check in &self.checks {
             if let Some(issue) = evaluate_check(check, value)
                 && !sink.push(issue)
@@ -215,6 +221,41 @@ impl DynSchema for BoolSchema {
 pub fn bool() -> BoolSchema {
     BoolSchema::default()
 }
+
+impl crate::schema::ObjectChild for BoolSchema {
+    fn validate_at(
+        &self,
+        v: &Value,
+        path: &FieldPath,
+        fail_fast: bool,
+    ) -> Result<Value, Vec<FormaIssue>> {
+        match Self::bridge(v) {
+            Ok(b) => {
+                let issues = self.run_checks_with(b, path, fail_fast);
+                if issues.is_empty() {
+                    Ok(Value::Bool(b))
+                } else {
+                    Err(issues)
+                }
+            }
+            Err(code) => Err(vec![FormaIssue {
+                path: path.clone(),
+                code,
+                message: "value is not a boolean".into(),
+                params: Vec::new(),
+            }]),
+        }
+    }
+
+    fn shape_node(&self) -> ShapeNode {
+        self.shape().clone()
+    }
+
+    fn meta(&self) -> &FieldMeta {
+        &self.meta
+    }
+}
+impl crate::schema::sealed::Sealed for BoolSchema {}
 
 #[cfg(test)]
 mod tests {

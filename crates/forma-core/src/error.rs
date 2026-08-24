@@ -10,8 +10,9 @@ use std::fmt;
 
 /// Address of the field a [`FormaIssue`] refers to.
 ///
-/// v0 primitives always report [`FieldPath::ROOT`]; object schemas in v1 will
-/// extend paths via [`FieldPath::join`].
+/// Top-level primitives report [`FieldPath::ROOT`]; object schemas join
+/// field segments via [`FieldPath::join`], so nested issues render as
+/// dotted paths (`user.email`).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FieldPath {
     segments: Vec<Segment>,
@@ -113,6 +114,9 @@ pub enum IssueCode {
     Refine,
     /// Erased-view value has the wrong variant for this schema.
     TypeMismatch,
+    /// Declared object field is absent from the input object (purely
+    /// structural: decided by key existence, never by the value found).
+    Required,
 }
 
 /// Key of one entry in [`IssueParams`].
@@ -138,7 +142,8 @@ pub type IssueParams = Vec<(ParamKey, ParamValue)>;
 /// human-readable message, and structured parameters.
 #[derive(Clone, Debug, PartialEq)]
 pub struct FormaIssue {
-    /// Address of the field under validation (ROOT for v0 primitives).
+    /// Address of the field under validation (ROOT for top-level primitives;
+    /// dot-joined key segments once validation descends into objects).
     pub path: FieldPath,
     /// Stable constraint identifier.
     pub code: IssueCode,
@@ -357,6 +362,26 @@ mod tests {
         assert!(s.push(issue(FieldPath::ROOT, IssueCode::Email, "b")));
         assert_eq!(s.issues.len(), 2);
         assert_eq!(s.finish().issues.len(), 2);
+    }
+
+    #[test]
+    fn er6_required_code_is_matchable_and_displays_sensibly() {
+        let c = IssueCode::Required;
+        assert_eq!(c, IssueCode::Required);
+        assert_ne!(c, IssueCode::Min);
+        let name = match c {
+            IssueCode::Required => "required",
+            _ => "other",
+        };
+        assert_eq!(name, "required");
+    }
+
+    #[test]
+    fn er6_required_carries_joined_path_in_issue() {
+        let p = FieldPath::key("email");
+        let i = issue(p.clone(), IssueCode::Required, "missing");
+        assert_eq!(i.path, p);
+        assert_eq!(i.path.to_string(), "email");
     }
 
     #[test]
