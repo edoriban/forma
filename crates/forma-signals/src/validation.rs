@@ -5,7 +5,6 @@
 //! behavior from one isolated boundary.
 
 use std::collections::BTreeMap;
-use std::hash::{Hash, Hasher};
 
 use reactive_graph::computed::ArcMemo;
 use reactive_graph::signal::ArcRwSignal;
@@ -14,45 +13,6 @@ use reactive_graph::traits::Get;
 use forma_core::error::{FieldPath, FormaIssue};
 
 use crate::field::ValidateOn;
-
-/// Insertion-order-preserving registry key wrapping a [`FieldPath`].
-///
-/// `Hash`, `Eq`, and ordering are all forwarded to the display string so the
-/// controller's `IndexMap` keeps declaration order while lookups stay exact.
-#[derive(Clone, Debug)]
-pub(crate) struct OrderedPath(FieldPath);
-
-impl OrderedPath {
-    pub(crate) fn new(path: FieldPath) -> Self {
-        Self(path)
-    }
-}
-
-impl PartialEq for OrderedPath {
-    fn eq(&self, other: &Self) -> bool {
-        self.0.to_string() == other.0.to_string()
-    }
-}
-
-impl Eq for OrderedPath {}
-
-impl Ord for OrderedPath {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.0.to_string().cmp(&other.0.to_string())
-    }
-}
-
-impl PartialOrd for OrderedPath {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl Hash for OrderedPath {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.0.to_string().hash(state);
-    }
-}
 
 pub(crate) fn stamp_issues(raw: Vec<FormaIssue>, owner: &FieldPath) -> Vec<FormaIssue> {
     raw.into_iter()
@@ -90,16 +50,13 @@ pub(crate) fn display_gate(
 pub(crate) fn group_issues(
     stamped: Vec<FormaIssue>,
     known: &[FieldPath],
-) -> (BTreeMap<OrderedPath, Vec<FormaIssue>>, Vec<FormaIssue>) {
-    let mut per_field: BTreeMap<OrderedPath, Vec<FormaIssue>> = BTreeMap::new();
+) -> (BTreeMap<FieldPath, Vec<FormaIssue>>, Vec<FormaIssue>) {
+    let mut per_field: BTreeMap<FieldPath, Vec<FormaIssue>> = BTreeMap::new();
     let mut unmatched = Vec::new();
     for issue in stamped {
         match known.iter().find(|p| *p == &issue.path) {
             Some(p) => {
-                per_field
-                    .entry(OrderedPath::new(p.clone()))
-                    .or_default()
-                    .push(issue);
+                per_field.entry(p.clone()).or_default().push(issue);
             }
             None => unmatched.push(issue),
         }
@@ -109,7 +66,7 @@ pub(crate) fn group_issues(
 
 #[cfg(test)]
 mod tests {
-    use super::{OrderedPath, group_issues, stamp_issues};
+    use super::{group_issues, stamp_issues};
     use forma_core::error::{FieldPath, FormaIssue, IssueCode};
 
     fn root_issue(code: IssueCode, msg: &'static str) -> FormaIssue {
@@ -184,11 +141,8 @@ mod tests {
         ];
         let (per_field, unmatched) = group_issues(stamped, &[a.clone(), b.clone()]);
         assert_eq!(unmatched.len(), 0);
-        assert_eq!(
-            per_field.get(&OrderedPath::new(a.clone())).unwrap().len(),
-            2
-        );
-        assert_eq!(per_field.get(&OrderedPath::new(b)).unwrap().len(), 1);
+        assert_eq!(per_field.get(&a).unwrap().len(), 2);
+        assert_eq!(per_field.get(&b).unwrap().len(), 1);
     }
 
     #[test]

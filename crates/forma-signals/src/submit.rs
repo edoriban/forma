@@ -50,11 +50,11 @@ pub enum SubmitError<E> {
     Handler(E),
 }
 
-impl<E> std::fmt::Display for SubmitError<E> {
+impl<E: std::fmt::Debug> std::fmt::Display for SubmitError<E> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Validation(err) => write!(f, "validation failed: {err}"),
-            Self::Handler(_) => f.write_str("submit handler failed"),
+            Self::Handler(e) => write!(f, "submit handler failed: {e:?}"),
         }
     }
 }

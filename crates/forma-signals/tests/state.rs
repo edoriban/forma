@@ -53,7 +53,7 @@ fn fsm4_write_back_to_initial_clears_dirty() {
 }
 
 #[test]
-fn fsm4_preset_initial_value_not_dirty() {
+fn fsm4_reset_restores_registration_initial_and_clears_dirty() {
     let mut c = controller();
     c.register(FieldPath::key("name"), Box::new(string()))
         .unwrap();
@@ -61,10 +61,12 @@ fn fsm4_preset_initial_value_not_dirty() {
     h.value().set(Value::from("preset"));
     c.reset();
     let h = c.field(&FieldPath::key("name")).unwrap();
-    assert!(
-        !h.dirty().get(),
-        "preset value is the new initial after reset"
+    assert_eq!(
+        h.value().get(),
+        Value::from(""),
+        "reset restores the registration initial, not the last-set value"
     );
+    assert!(!h.dirty().get(), "restored initial is clean");
     h.value().set(Value::from("other"));
     assert!(h.dirty().get());
 }

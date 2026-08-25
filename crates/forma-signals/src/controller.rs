@@ -13,7 +13,7 @@ use forma_core::value::Value;
 
 use crate::field::{FieldCell, FieldHandle, ValidateOn};
 use crate::submit::{FormSnapshot, SubmitError};
-use crate::validation::{OrderedPath, display_gate, group_issues, stamp_issues};
+use crate::validation::{display_gate, group_issues, stamp_issues};
 
 /// Error returned by [`FormController::register`].
 #[derive(Clone, Debug, PartialEq)]
@@ -317,8 +317,10 @@ impl FormController {
         }
     }
 
-    /// Forces synchronous recomputation of the field's error memos within the
-    /// call — no await, no scheduling (FSV-2).
+    /// Eagerly evaluates the field's error memos, synchronously — no await,
+    /// no scheduling (FSV-2). Because the memos are lazy, any consumer read
+    /// recomputes stale values on demand anyway; this only warms the memo
+    /// caches so a later `.get()` finds fresh values already computed.
     pub fn revalidate(&self, path: &FieldPath) {
         let memos: Option<FieldMemos> = {
             let fields = self.lock_fields();
@@ -375,10 +377,7 @@ impl FormController {
                 .collect()
         };
         for (path, (server, baseline, current)) in known.into_iter().zip(updates) {
-            let matched = per_field
-                .get(&OrderedPath::new(path))
-                .cloned()
-                .unwrap_or_default();
+            let matched = per_field.get(&path).cloned().unwrap_or_default();
             server.set(matched);
             baseline.set(current);
         }
@@ -433,6 +432,10 @@ impl FormController {
     /// resets on success, handler error, validation failure, AND when the
     /// composed future is dropped (cancelled) mid-flight. No spawner
     /// required; the caller owns scheduling.
+    ///
+    /// This never flips the [`FormController::submitted`] flag: the caller
+    /// owns that (forma-ui's form glue flips it before awaiting), so headless
+    /// callers who skip the flip keep Submit-gated errors hidden.
     pub fn on_submit<T, E, F, Fut>(
         &self,
         handler: F,
