@@ -35,10 +35,16 @@ pub(crate) fn map_outcome<T, E>(result: Result<T, SubmitError<E>>) -> SubmitOutc
 /// shield complementing the reactively disabled button) followed by the
 /// synchronous `submitted` flip that activates visibility gates BEFORE any
 /// async work (FU-FM-2). Returns `false` when an attempt is already running.
+///
+/// `is_submitting` flips true SYNCHRONOUSLY here — not on the composed
+/// future's first poll — so two same-tick submit events cannot both pass the
+/// guard. The controller's drop guard (engaged when the future first polls)
+/// resets the flag exactly once, on every exit path including cancellation.
 pub(crate) fn begin_attempt(controller: &FormController) -> bool {
     if controller.is_submitting().get() {
         return false;
     }
+    controller.is_submitting().set(true);
     controller.submitted().set(true);
     true
 }
@@ -345,12 +351,33 @@ mod glue {
     }
 
     #[test]
+    fn guard_rejects_second_synchronous_attempt() {
+        // Two submit events in the same tick: the first flips `is_submitting`
+        // synchronously inside begin_attempt (before any future is polled),
+        // so the second must be rejected.
+        let controller = controller_with_valid_email();
+        assert!(begin_attempt(&controller), "first attempt proceeds");
+        assert!(
+            !begin_attempt(&controller),
+            "second same-tick attempt must be rejected"
+        );
+        assert!(controller.is_submitting().get());
+        // Driving the composed future still resets the flag exactly once.
+        let outcome: SubmitOutcome<(), std::convert::Infallible> =
+            block_on(finish_attempt(&controller, |_snap| async { Ok(()) }));
+        assert!(matches!(outcome, SubmitOutcome::Success(())));
+        assert!(
+            !controller.is_submitting().get(),
+            "drop guard closes the bracket after the attempt settles"
+        );
+    }
+
+    #[test]
     fn guard_rejects_attempt_while_in_flight() {
         use reactive_graph::traits::Set;
         let controller = controller_with_valid_email();
-        // Simulate mid-flight state (the L-2 pre-flip window before
-        // `is_submitting` flips is a documented known edge, shielded by the
-        // reactively disabled button — not natively testable).
+        // Simulate mid-flight state set from elsewhere; begin_attempt must
+        // observe it and reject the attempt.
         controller.is_submitting().set(true);
         assert!(
             !begin_attempt(&controller),

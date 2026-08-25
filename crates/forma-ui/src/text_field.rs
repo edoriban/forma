@@ -29,6 +29,14 @@ pub(crate) fn should_push(dom: &str, sig: &str) -> bool {
     dom != sig
 }
 
+/// SSR seam: the string emitted as the input's `value` ATTRIBUTE at render
+/// time, so server-rendered markup carries prefilled (`register_initial`)
+/// content. Client-side updates keep flowing through the pushback effect;
+/// the attribute is captured once and never rewritten reactively.
+pub(crate) fn ssr_initial(field: &FieldHandle) -> String {
+    field.get_str().unwrap_or_default()
+}
+
 /// One bound string field: bidirectional value bridge over the handle's
 /// `get_str`/`set_str` convenience layer, touch-on-blur via the resolved
 /// controller, gated error rendering, and conditional pushback.
@@ -77,6 +85,7 @@ pub fn TextField(
 
     let field_for_input = field.clone();
     let field_for_blur = field.clone();
+    let initial_value = ssr_initial(&field);
     let visible = field.visible_errors();
 
     view! {
@@ -90,6 +99,7 @@ pub fn TextField(
             <input
                 type="text"
                 id=input_id.clone()
+                value=initial_value
                 placeholder=placeholder
                 node_ref=input_ref
                 on:input=move |ev| field_for_input.set_str(&event_target_value(&ev))
@@ -151,5 +161,36 @@ mod tests {
         assert!(should_push("", "abc"));
         assert!(should_push("abc", ""));
         assert!(should_push("old", "new"));
+    }
+
+    // DOM-level assertion of the serialized attribute is not possible in
+    // this crate's native harness (no SSR feature); the seam feeding the
+    // `value` attribute is pinned instead.
+    #[test]
+    fn ssr_initial_carries_prefilled_value() {
+        use forma_signals::{FieldPath, FormController, ValidateOn, Value};
+        let mut c = FormController::new(ValidateOn::Blur);
+        let h = c
+            .register_initial(
+                FieldPath::key("email"),
+                Box::new(forma_core::prelude::string()),
+                Value::from("pre@filled.io"),
+            )
+            .unwrap();
+        assert_eq!(
+            ssr_initial(&h),
+            "pre@filled.io",
+            "the value attribute seam must carry the registered initial"
+        );
+    }
+
+    #[test]
+    fn ssr_initial_defaults_to_empty_for_plain_registration() {
+        use forma_signals::{FieldPath, FormController, ValidateOn};
+        let mut c = FormController::new(ValidateOn::Blur);
+        let h = c
+            .register(FieldPath::key("email"), Box::new(forma_core::prelude::string()))
+            .unwrap();
+        assert_eq!(ssr_initial(&h), "");
     }
 }
