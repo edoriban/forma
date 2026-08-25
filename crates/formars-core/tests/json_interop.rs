@@ -2,7 +2,6 @@
 
 #![cfg(feature = "serde")]
 
-use formars_core::prelude::*;
 use formars_core::value::Value;
 
 #[test]
@@ -38,9 +37,13 @@ fn dv4_u64_above_i64_max_maps_to_f64_documented_lossy() {
     let v: Value = serde_json::from_value(json).expect("conversion succeeds");
     match v {
         Value::F64(f) => {
+            // `u64::MAX` widens to exactly 2^64 under round-to-nearest;
+            // computed without a cast and compared bit-for-bit so the
+            // documented lossy value is pinned precisely.
+            let expected = f64::powi(2.0, 64);
             assert_eq!(
-                f,
-                u64::MAX as f64,
+                f.to_bits(),
+                expected.to_bits(),
                 "documented lossy mapping for ints beyond i64"
             );
         }

@@ -85,11 +85,13 @@ mod tests {
         assert!(matches!(from_json(&serde_json::json!(2.5)), Value::F64(_)));
     }
 
-    /// Integers above i64::MAX cannot fit our model: documented lossy F64.
+    /// Integers above `i64::MAX` cannot fit our model: documented lossy `F64`.
     #[test]
     fn u64_beyond_i64_max_maps_to_f64_lossy() {
         let v = from_json(&serde_json::json!(u64::MAX));
-        assert_eq!(v, Value::F64(u64::MAX as f64));
+        // `u64::MAX` rounds up to 2^64 when widened to `f64`; computed without
+        // a cast so the expectation stays exact and lint-clean.
+        assert_eq!(v, Value::F64(f64::powi(2.0, 64)));
     }
 
     #[test]

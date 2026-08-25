@@ -325,5 +325,6 @@ mod tests {
     }
 }
 
+/// JSON (de)serialization bridge for [`Value`], enabled by the `serde` feature.
 #[cfg(feature = "serde")]
 pub mod json;
