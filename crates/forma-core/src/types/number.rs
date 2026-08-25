@@ -1,5 +1,5 @@
 use std::marker::PhantomData;
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
 
 use crate::error::{
     FieldPath, FormaError, FormaIssue, IssueCode, IssueParams, ParamKey, ParamValue, Sink,
@@ -21,6 +21,9 @@ mod sealed {
 pub trait NumberValue:
     sealed::Sealed + Copy + PartialOrd + std::fmt::Debug + Send + Sync + 'static
 {
+    /// True for the i64 family; drives `ShapeKind::Number { integer }`.
+    #[doc(hidden)]
+    const IS_INTEGER: bool;
     #[doc(hidden)]
     fn zero() -> Self;
     #[doc(hidden)]
@@ -36,6 +39,7 @@ pub trait NumberValue:
 }
 
 impl NumberValue for f64 {
+    const IS_INTEGER: bool = false;
     fn zero() -> Self {
         0.0
     }
@@ -57,6 +61,7 @@ impl NumberValue for f64 {
 }
 
 impl NumberValue for i64 {
+    const IS_INTEGER: bool = true;
     fn zero() -> Self {
         0
     }
@@ -95,20 +100,20 @@ pub enum NumCheck<T> {
 /// Numeric builder schema over `f64` or `i64`; same single-IR design as strings.
 pub struct NumberSchema<T: NumberValue> {
     checks: Vec<NumCheck<T>>,
-    rules: Vec<Box<dyn Rule<T>>>,
+    rules: Vec<Arc<dyn Rule<T>>>,
     meta: FieldMeta,
     fail_fast: bool,
     shape_cache: OnceLock<ShapeNode>,
     _marker: PhantomData<fn() -> T>,
 }
 
-/// Clones carry checks/meta/flags but not boxed rules (rules are not clonable);
-/// build fresh instances when erasure needs identical behavior.
+/// Clones share the same rule instances via `Arc`, so a clone validates
+/// identically to the original (refinements included).
 impl<T: NumberValue> Clone for NumberSchema<T> {
     fn clone(&self) -> Self {
         Self {
             checks: self.checks.clone(),
-            rules: Vec::new(),
+            rules: self.rules.clone(),
             meta: self.meta.clone(),
             fail_fast: self.fail_fast,
             shape_cache: OnceLock::new(),
@@ -185,7 +190,7 @@ impl<T: NumberValue> NumberSchema<T> {
     {
         let ordinal = self.rules.len();
         self.rules
-            .push(Box::new(ClosureRule::with_ordinal(ordinal, f)));
+            .push(Arc::new(ClosureRule::with_ordinal(ordinal, f)));
         self
     }
 
@@ -195,7 +200,7 @@ impl<T: NumberValue> NumberSchema<T> {
     where
         R: Rule<T> + 'static,
     {
-        self.rules.push(Box::new(rule));
+        self.rules.push(Arc::new(rule));
         self
     }
 
@@ -357,7 +362,9 @@ impl<T: NumberValue> DynSchema for NumberSchema<T> {
 
     fn shape(&self) -> &ShapeNode {
         self.shape_cache.get_or_init(|| ShapeNode {
-            kind: ShapeKind::Number { integer: false },
+            kind: ShapeKind::Number {
+                integer: T::IS_INTEGER,
+            },
             constraints: self
                 .checks
                 .iter()
@@ -452,6 +459,32 @@ mod tests {
         let s = number::<f64>().int();
         assert_eq!(codes(&s, 2.5), vec![IssueCode::Int]);
         assert!(codes(&s, 2.0).is_empty());
+    }
+
+    #[test]
+    fn sc5_shape_reports_integer_family_honestly() {
+        use crate::schema::ShapeKind;
+        assert_eq!(
+            number::<i64>().shape().kind,
+            ShapeKind::Number { integer: true },
+            "i64 schemas must report integer: true"
+        );
+        assert_eq!(
+            number::<f64>().shape().kind,
+            ShapeKind::Number { integer: false },
+            "f64 schemas must report integer: false"
+        );
+    }
+
+    #[test]
+    fn sc5_clone_preserves_refinements() {
+        let original = number::<f64>().refine(|n| *n < 10.0);
+        let cloned = original.clone();
+        assert!(cloned.parse(&5.0).is_ok());
+        assert!(
+            cloned.parse(&11.0).is_err(),
+            "clone must reject what the original rejects"
+        );
     }
 
     #[test]

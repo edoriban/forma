@@ -1,4 +1,4 @@
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
 
 use crate::error::{
     FieldPath, FormaError, FormaIssue, IssueCode, IssueParams, ParamKey, ParamValue, Sink,
@@ -30,7 +30,7 @@ pub enum StrCheck {
 /// parse, the erased view and `shape()` (single representation, three projections).
 pub struct StringSchema {
     checks: Vec<StrCheck>,
-    rules: Vec<Box<dyn Rule<str>>>,
+    rules: Vec<Arc<dyn Rule<str>>>,
     meta: FieldMeta,
     fail_fast: bool,
     trim: bool,
@@ -41,7 +41,7 @@ impl Clone for StringSchema {
     fn clone(&self) -> Self {
         Self {
             checks: self.checks.clone(),
-            rules: Vec::new(),
+            rules: self.rules.clone(),
             meta: self.meta.clone(),
             fail_fast: self.fail_fast,
             trim: self.trim,
@@ -142,7 +142,7 @@ impl StringSchema {
     {
         let ordinal = self.rules.len();
         self.rules
-            .push(Box::new(ClosureRule::with_ordinal(ordinal, f)));
+            .push(Arc::new(ClosureRule::with_ordinal(ordinal, f)));
         self
     }
 
@@ -152,7 +152,7 @@ impl StringSchema {
     where
         R: Rule<str> + 'static,
     {
-        self.rules.push(Box::new(rule));
+        self.rules.push(Arc::new(rule));
         self
     }
 
@@ -490,6 +490,17 @@ mod tests {
         });
         assert!(codes(&s, "abc").is_empty());
         assert_eq!(CALLS.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn rf1_clone_preserves_refinements() {
+        let original = string().refine(|s| s.contains('x'));
+        let cloned = original.clone();
+        assert!(
+            codes(&cloned, "ab").contains(&IssueCode::Refine),
+            "clone must reject what the original rejects"
+        );
+        assert!(codes(&cloned, "ax").is_empty());
     }
 
     #[test]

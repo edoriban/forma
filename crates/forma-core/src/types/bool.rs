@@ -1,4 +1,4 @@
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
 
 use crate::error::{FieldPath, FormaError, FormaIssue, IssueCode, ParamValue, Sink};
 use crate::rule::{ClosureRule, Rule};
@@ -15,7 +15,7 @@ pub enum BoolCheck {
 /// Boolean builder schema; same single-IR dual-view design.
 pub struct BoolSchema {
     checks: Vec<BoolCheck>,
-    rules: Vec<Box<dyn Rule<bool>>>,
+    rules: Vec<Arc<dyn Rule<bool>>>,
     meta: FieldMeta,
     fail_fast: bool,
     shape_cache: OnceLock<ShapeNode>,
@@ -25,7 +25,7 @@ impl Clone for BoolSchema {
     fn clone(&self) -> Self {
         Self {
             checks: self.checks.clone(),
-            rules: Vec::new(),
+            rules: self.rules.clone(),
             meta: self.meta.clone(),
             fail_fast: self.fail_fast,
             shape_cache: OnceLock::new(),
@@ -72,7 +72,7 @@ impl BoolSchema {
     {
         let ordinal = self.rules.len();
         self.rules
-            .push(Box::new(ClosureRule::with_ordinal(ordinal, f)));
+            .push(Arc::new(ClosureRule::with_ordinal(ordinal, f)));
         self
     }
 
@@ -82,7 +82,7 @@ impl BoolSchema {
     where
         R: Rule<bool> + 'static,
     {
-        self.rules.push(Box::new(rule));
+        self.rules.push(Arc::new(rule));
         self
     }
 
@@ -266,6 +266,17 @@ mod tests {
     fn sc6_equals_accepts_matching_value() {
         let s = bool().equals(true);
         assert_eq!(s.parse(&true), Ok(true));
+    }
+
+    #[test]
+    fn sc6_clone_preserves_refinements() {
+        let original = bool().refine(|b| *b);
+        let cloned = original.clone();
+        assert!(
+            cloned.parse(&false).is_err(),
+            "clone must reject what the original rejects"
+        );
+        assert!(cloned.parse(&true).is_ok());
     }
 
     #[test]

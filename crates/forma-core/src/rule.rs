@@ -14,7 +14,7 @@
 //! struct StartsWith(char);
 //!
 //! impl Rule<str> for StartsWith {
-//!     fn name(&self) -> &'static str { "starts_with" }
+//!     fn name(&self) -> &str { "starts_with" }
 //!     fn validate(&self, value: &str) -> Option<RefineRejection> {
 //!         if value.starts_with(self.0) { None } else {
 //!             Some(RefineRejection {
@@ -61,8 +61,9 @@ pub struct RefineRejection {
 /// impls holding `!Send`/`!Sync` state; pre-1.0 this may change in a minor
 /// release.
 pub trait Rule<T: ?Sized>: fmt::Debug + Send + Sync {
-    /// Stable identifier surfaced in `shape()` and issue params.
-    fn name(&self) -> &'static str;
+    /// Stable identifier surfaced in `shape()` and issue params. Borrowed
+    /// from the rule itself so generated names need no `'static` interning.
+    fn name(&self) -> &str;
 
     /// Returns rejection data on failure; `None` on pass.
     fn validate(&self, value: &T) -> Option<RefineRejection>;
@@ -71,7 +72,7 @@ pub trait Rule<T: ?Sized>: fmt::Debug + Send + Sync {
 /// Adapter wrapping a sync closure as a [`Rule`] (used by `.refine(...)`).
 pub struct ClosureRule<T: ?Sized> {
     f: Box<dyn Fn(&T) -> bool + Send + Sync>,
-    name: &'static str,
+    name: Cow<'static, str>,
 }
 
 /// Debug output shows only the stable name (closures are not printable).
@@ -89,26 +90,24 @@ impl<T: ?Sized> ClosureRule<T> {
     pub fn new(f: impl Fn(&T) -> bool + Send + Sync + 'static) -> Self {
         Self {
             f: Box::new(f),
-            name: "refine-0",
+            name: Cow::Borrowed("refine-0"),
         }
     }
 
     /// Ordinal-based name (`"refine-3"`), stable within a schema instance.
-    /// The formatted name is intentionally interned via `Box::leak`; cost is
-    /// bounded by the number of `.refine()` calls ever made.
+    /// The formatted name is owned by the rule; nothing is leaked.
     #[must_use]
     pub fn with_ordinal(ordinal: usize, f: impl Fn(&T) -> bool + Send + Sync + 'static) -> Self {
-        let name: &'static str = Box::leak(format!("refine-{ordinal}").into_boxed_str());
         Self {
             f: Box::new(f),
-            name,
+            name: Cow::Owned(format!("refine-{ordinal}")),
         }
     }
 }
 
 impl<T: ?Sized> Rule<T> for ClosureRule<T> {
-    fn name(&self) -> &'static str {
-        self.name
+    fn name(&self) -> &str {
+        &self.name
     }
 
     fn validate(&self, value: &T) -> Option<RefineRejection> {
@@ -162,6 +161,14 @@ mod tests {
     fn closure_rule_with_ordinal_names_stably() {
         let r = ClosureRule::with_ordinal(2, |_s: &str| false);
         assert_eq!(r.name(), "refine-2");
+    }
+
+    #[test]
+    fn closure_rule_ordinal_name_owned_not_leaked() {
+        // Arbitrary ordinals must render identically to the pre-Cow interned
+        // form; the name now borrows from the rule instance itself.
+        let r = ClosureRule::with_ordinal(4096, |_s: &str| true);
+        assert_eq!(r.name(), "refine-4096");
     }
 
     #[test]

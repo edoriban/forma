@@ -392,13 +392,9 @@ fn sc9_refine_and_failfast_parity() {
     ];
     for (name, schema, value, typed_input, valid) in table {
         check_typed(name, "p4", valid, &value, &typed_input, &schema);
-        let rebuilt: StringSchema = match name {
-            "refine_fail" => string().min(2).refine(|s| s.contains('x')),
-            "refine_pass" => string().min(2).refine(|s| s.contains('c')),
-            "ff_min_email" => string().min(10).email().fail_fast(),
-            _ => string().refine(|_| false).refine(|_| false),
-        };
-        let boxed: Box<dyn DynSchema> = Box::new(rebuilt);
+        // Clone preserves refinements (Arc-shared rules), so the erased view
+        // is built from a clone instead of a hand-rebuilt schema.
+        let boxed: Box<dyn DynSchema> = Box::new(schema.clone());
         check_erased(name, "p4", valid, &value, boxed.as_ref());
     }
 }
