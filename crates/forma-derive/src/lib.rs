@@ -1,5 +1,5 @@
 //! Derive entrypoint. All real work lives in [`expansion`]; attribute
-//! validation is layered in by `attrs` in a later phase.
+//! validation lives in `attrs`.
 
 use proc_macro::TokenStream;
 use syn::parse_macro_input;

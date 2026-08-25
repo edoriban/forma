@@ -2,7 +2,10 @@
 
 Schema validation for Rust, composed with a fluent builder API — no derive macros, no codegen.
 
-> **Status: early design.** No public API yet. Expect everything below to change.
+> **Status: pre-0.1.** The core pieces are implemented — `forma-core` (schemas,
+> values, errors), `forma-signals` (headless reactive form controller),
+> `forma-ui` (Leptos components), and `forma-derive` (`#[derive(FormSchema)]`) —
+> but the API is still allowed to change before the first release.
 
 ## Why
 
@@ -11,12 +14,19 @@ Rust validation crates usually ask you to describe your rules in attributes on a
 compose, and pass around.
 
 ```rust
-// Sketch — not yet implemented.
+use forma_core::prelude::*;
+use forma_core::value::Object;
+
 let user = object()
     .field("email", string().email())
-    .field("age", number().int().min(18));
+    .field("age", coerced::<u32>()); // HTML form inputs arrive as strings
 
-let parsed = user.parse(input)?;
+let mut input = Object::new();
+input.insert("email", Value::from("ada@example.com"));
+input.insert("age", Value::from("36"));
+
+let parsed = user.parse(&input).expect("valid input");
+assert_eq!(parsed.get("age"), Some(&Value::I64(36)));
 ```
 
 ## Goals

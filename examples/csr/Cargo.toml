@@ -1,7 +1,7 @@
 [package]
 name = "forma-csr-example"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 publish = false
 description = "Minimal standalone Leptos 0.8 CSR example consuming forma-ui."
 
