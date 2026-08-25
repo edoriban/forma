@@ -16,7 +16,7 @@ pub(crate) fn is_plausible_email(s: &str) -> bool {
     labels.len() >= 2
         && labels
             .iter()
-            .all(|l| !l.is_empty() && l.chars().all(|c| c.is_alphanumeric() || c == '-'))
+            .all(|l| !l.is_empty() && l.chars().all(|c| c.is_ascii_alphanumeric() || c == '-'))
 }
 
 /// Pragmatic URL check: requires `scheme://` prefix, non-empty host, no
@@ -40,13 +40,9 @@ pub(crate) fn is_plausible_url(s: &str) -> bool {
     {
         return false;
     }
-    let host = rest.split(['/', '?', '#']).next().unwrap_or("");
-    let host = host.rsplit(':').next().unwrap_or(host);
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or("");
+    let host = authority.split(':').next().unwrap_or(authority);
     !host.is_empty() && !s.chars().any(char::is_whitespace)
-}
-
-fn is_hex(c: char) -> bool {
-    c.is_ascii_digit() || ('a'..='f').contains(&c) || ('A'..='F').contains(&c)
 }
 
 /// Pragmatic UUID check: canonical 8-4-4-4-12 hex groups (case-insensitive).
@@ -56,7 +52,7 @@ pub(crate) fn is_plausible_uuid(s: &str) -> bool {
     if groups.len() != 5 || !groups.iter().map(|g| g.len()).eq([8usize, 4, 4, 4, 12]) {
         return false;
     }
-    groups.iter().all(|g| g.chars().all(is_hex))
+    groups.iter().all(|g| g.chars().all(|c| c.is_ascii_hexdigit()))
 }
 
 #[cfg(test)]
@@ -76,6 +72,7 @@ mod tests {
             "us er@example.com",
             "user@exa mple.com",
             "user@example.",
+            "user@ex\u{e4}mple.com",
         ];
         for s in accept {
             assert!(is_plausible_email(s), "expected accept: {s}");
@@ -99,6 +96,7 @@ mod tests {
             "https://",
             "http:///path",
             "://example.com",
+            "https://:8080/x",
         ];
         for s in accept {
             assert!(is_plausible_url(s), "expected accept: {s}");

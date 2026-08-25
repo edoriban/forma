@@ -222,12 +222,11 @@ impl StringSchema {
     }
 }
 
-fn param(key: &str, v: ParamValue) -> (ParamKey, ParamValue) {
-    (key.into(), v)
-}
-
 fn params_of(pairs: Vec<(&str, ParamValue)>) -> IssueParams {
-    pairs.into_iter().map(|(k, v)| param(k, v)).collect()
+    pairs
+        .into_iter()
+        .map(|(k, v)| (ParamKey::from(k), v))
+        .collect()
 }
 
 impl Schema for StringSchema {
@@ -345,15 +344,8 @@ fn evaluate_check(check: &StrCheck, value: &str) -> Option<FormaIssue> {
     Some(crate::schema::issue_at_root(
         code,
         message.into(),
-        to_params(params),
+        params_of(params),
     ))
-}
-
-fn to_params(pairs: Vec<(&str, ParamValue)>) -> IssueParams {
-    pairs
-        .into_iter()
-        .map(|(k, v)| (ParamKey::from(k), v))
-        .collect()
 }
 
 fn code_of(c: &StrCheck) -> IssueCode {
@@ -456,6 +448,15 @@ mod tests {
     fn sc3_length_exact_match() {
         assert!(codes(&string().length(2), "ab").is_empty());
         assert_eq!(codes(&string().length(3), "ab"), vec![IssueCode::Length]);
+    }
+
+    #[test]
+    fn sc3_min_max_count_chars_not_bytes() {
+        // "héllo" is 5 chars but 6 bytes; char counting is the pinned contract.
+        assert!(codes(&string().min(5), "h\u{e9}llo").is_empty());
+        assert!(codes(&string().max(5), "h\u{e9}llo").is_empty());
+        assert!(codes(&string().length(5), "h\u{e9}llo").is_empty());
+        assert_eq!(codes(&string().max(4), "h\u{e9}llo"), vec![IssueCode::Max]);
     }
 
     #[test]

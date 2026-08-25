@@ -54,9 +54,14 @@ impl Object {
         }
     }
 
-    /// Appends a key-value pair at the end (insertion order preserved).
+    /// Inserts a key-value pair. An existing key keeps its position but its
+    /// value is replaced (last write wins, matching JSON semantics); a new
+    /// key is appended at the end (insertion order preserved).
     pub fn insert(&mut self, key: &str, value: Value) {
-        self.entries.push((StringKey(key.into()), value));
+        match self.entries.iter_mut().find(|(k, _)| k.as_ref() == key) {
+            Some((_, v)) => *v = value,
+            None => self.entries.push((StringKey(key.into()), value)),
+        }
     }
 
     /// Iterates entries in insertion order.
@@ -268,6 +273,18 @@ mod tests {
         assert_eq!(String::from("hi").to_value(), Value::String("hi".into()));
         assert_eq!(true.to_value(), Value::Bool(true));
         assert_eq!(false.to_value(), Value::Bool(false));
+    }
+
+    #[test]
+    fn dv1_duplicate_insert_last_write_wins_in_place() {
+        let mut o = Object::new();
+        o.insert("a", Value::I64(1));
+        o.insert("b", Value::I64(2));
+        o.insert("a", Value::I64(3));
+        assert_eq!(o.get("a"), Some(&Value::I64(3)), "last write wins");
+        assert_eq!(o.entries.len(), 2, "no duplicate entry appended");
+        let keys: Vec<&str> = o.iter().map(|(k, _)| k.as_ref()).collect();
+        assert_eq!(keys, vec!["a", "b"], "original position kept");
     }
 
     #[test]

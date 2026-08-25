@@ -10,7 +10,6 @@ use crate::value::{ToValue, Value};
 /// `Input = String`, `Output = T` (SC-8), mirroring HTML form input.
 pub struct CoercedSchema<T: FromStr> {
     meta: FieldMeta,
-    fail_fast: bool,
     shape_cache: OnceLock<ShapeNode>,
     _marker: PhantomData<fn() -> T>,
 }
@@ -19,7 +18,6 @@ impl<T: FromStr> Clone for CoercedSchema<T> {
     fn clone(&self) -> Self {
         Self {
             meta: self.meta.clone(),
-            fail_fast: self.fail_fast,
             shape_cache: OnceLock::new(),
             _marker: PhantomData,
         }
@@ -31,7 +29,6 @@ impl<T: FromStr> Default for CoercedSchema<T> {
     fn default() -> Self {
         Self {
             meta: FieldMeta::default(),
-            fail_fast: false,
             shape_cache: OnceLock::new(),
             _marker: PhantomData,
         }
@@ -46,13 +43,6 @@ impl<T: FromStr> std::fmt::Debug for CoercedSchema<T> {
 }
 
 impl<T: FromStr> CoercedSchema<T> {
-    /// Flag present for API uniformity; coercion emits at most one issue anyway.
-    #[must_use]
-    pub fn fail_fast(mut self) -> Self {
-        self.fail_fast = true;
-        self
-    }
-
     /// Sets the UI label metadata slot.
     #[must_use]
     pub fn label(mut self, label: &'static str) -> Self {
@@ -74,10 +64,10 @@ impl<T: FromStr> CoercedSchema<T> {
         self
     }
 
-    fn bridge(v: &Value) -> Result<Option<&str>, ()> {
+    fn bridge(v: &Value) -> Option<&str> {
         match v {
-            Value::String(s) => Ok(Some(s)),
-            _ => Err(()),
+            Value::String(s) => Some(s),
+            _ => None,
         }
     }
 
@@ -106,11 +96,11 @@ impl<T: FromStr> Schema for CoercedSchema<T> {
 impl<T: FromStr + 'static> DynSchema for CoercedSchema<T> {
     fn validate_value(&self, v: &Value) -> Vec<FormaIssue> {
         match Self::bridge(v) {
-            Ok(Some(s)) => match Self::coerce(s) {
+            Some(s) => match Self::coerce(s) {
                 Ok(_) => Vec::new(),
                 Err(issue) => vec![issue],
             },
-            _ => vec![crate::schema::issue_at_root(
+            None => vec![crate::schema::issue_at_root(
                 IssueCode::TypeMismatch,
                 "value is not a string".into(),
                 Vec::new(),
@@ -147,14 +137,14 @@ impl<T: FromStr + ToValue + 'static> crate::schema::ObjectChild for CoercedSchem
         _fail_fast: bool,
     ) -> Result<Value, Vec<FormaIssue>> {
         match Self::bridge(v) {
-            Ok(Some(s)) => match Self::coerce(s) {
+            Some(s) => match Self::coerce(s) {
                 Ok(t) => Ok(t.to_value()),
                 Err(mut issue) => {
                     issue.path = path.clone();
                     Err(vec![issue])
                 }
             },
-            _ => Err(vec![FormaIssue {
+            None => Err(vec![FormaIssue {
                 path: path.clone(),
                 code: IssueCode::TypeMismatch,
                 message: "value is not a string".into(),

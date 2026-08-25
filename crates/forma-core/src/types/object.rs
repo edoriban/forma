@@ -32,16 +32,24 @@ pub struct ObjectSchema {
 impl ObjectSchema {
     /// Declares a field backed by any schema family; declaration order is
     /// preserved and governs walk order, issue order and output order.
+    ///
+    /// Re-declaring an already-declared name replaces the earlier child in
+    /// place (last declaration wins, keeping the original position) —
+    /// consistent with [`Object::insert`]'s last-write-wins semantics.
     #[must_use]
     pub fn field<C>(mut self, name: &str, child: C) -> Self
     where
         C: ObjectChild + 'static,
     {
-        self.fields.push(Field {
+        let field = Field {
             name: name.into(),
             meta: child.meta().clone(),
             child: Box::new(child),
-        });
+        };
+        match self.fields.iter_mut().find(|f| f.name.as_ref() == name) {
+            Some(existing) => *existing = field,
+            None => self.fields.push(field),
+        }
         self
     }
 
@@ -239,5 +247,23 @@ mod tests {
             IssueCode::Min
         ));
         assert_eq!(fields[1].child.kind, ShapeKind::Coerced);
+    }
+
+    #[test]
+    fn duplicate_field_declaration_replaces_in_place() {
+        let s = object()
+            .field("name", string().min(5))
+            .field("age", coerced::<u32>())
+            .field("name", string().min(1));
+        let ShapeKind::Object { fields } = &s.shape().kind else {
+            panic!("expected Object kind");
+        };
+        let keys: Vec<&str> = fields.iter().map(|f| f.key.as_ref()).collect();
+        assert_eq!(keys, vec!["name", "age"], "position kept, no duplicate");
+        // last declaration wins: min(1) accepts a 2-char name where min(5) would not
+        let mut input = Object::new();
+        input.insert("name", Value::from("ab"));
+        input.insert("age", Value::from("42"));
+        assert!(s.parse(&input).is_ok());
     }
 }

@@ -13,13 +13,13 @@ use std::fmt;
 /// Top-level primitives report [`FieldPath::ROOT`]; object schemas join
 /// field segments via [`FieldPath::join`], so nested issues render as
 /// dotted paths (`user.email`).
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct FieldPath {
     segments: Vec<Segment>,
 }
 
 /// One step in a [`FieldPath`]: either an object key or an array index.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Segment {
     /// Object key segment (e.g. `user`).
     Key(Box<str>),
@@ -218,7 +218,7 @@ impl<'p> Sink<'p> {
     pub(crate) fn push(&mut self, mut issue: FormaIssue) -> bool {
         issue.path = self.path.clone();
         self.issues.push(issue);
-        !self.fail_fast || self.issues.is_empty()
+        !self.fail_fast
     }
 
     /// Consumes the sink into the final error.
