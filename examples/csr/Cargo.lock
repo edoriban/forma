@@ -336,31 +336,31 @@ dependencies = [
 ]
 
 [[package]]
-name = "forma-core"
+name = "formars-core"
 version = "0.1.0"
 
 [[package]]
-name = "forma-csr-example"
+name = "formars-csr-example"
 version = "0.1.0"
 dependencies = [
- "forma-core",
- "forma-ui",
+ "formars-core",
+ "formars-ui",
  "leptos",
 ]
 
 [[package]]
-name = "forma-signals"
+name = "formars-signals"
 version = "0.1.0"
 dependencies = [
- "forma-core",
+ "formars-core",
  "reactive_graph",
 ]
 
 [[package]]
-name = "forma-ui"
+name = "formars-ui"
 version = "0.1.0"
 dependencies = [
- "forma-signals",
+ "formars-signals",
  "leptos",
  "reactive_graph",
 ]

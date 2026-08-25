@@ -1,5 +1,5 @@
-use forma_core::prelude::*;
-use forma_ui::*;
+use formars_core::prelude::*;
+use formars_ui::*;
 use leptos::prelude::*;
 
 #[component]

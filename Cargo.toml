@@ -1,18 +1,19 @@
 [workspace]
 resolver = "3"
-members = ["crates/forma-core", "crates/forma-derive", "crates/forma-signals", "crates/forma-ui"]
+members = ["crates/formars-core", "crates/formars-derive", "crates/formars-signals", "crates/formars-ui"]
 
 [workspace.package]
 edition = "2024"
 rust-version = "1.88"
 license = "MIT"
-repository = "https://github.com/edoriban/forma"
+repository = "https://github.com/edoriban/formars"
 
 [workspace.dependencies]
 # intentionally near-empty registry; future crates use workspace = true
-forma-core = { path = "crates/forma-core", version = "0.1.0" }
-forma-derive = { path = "crates/forma-derive", version = "0.1.0" }
-forma-signals = { path = "crates/forma-signals", version = "0.1.0" }
+formars-core = { path = "crates/formars-core", version = "0.1.0" }
+formars-derive = { path = "crates/formars-derive", version = "0.1.0" }
+formars-signals = { path = "crates/formars-signals", version = "0.1.0" }
+formars-ui = { path = "crates/formars-ui", version = "0.1.0" }
 reactive_graph = { version = "0.2", default-features = false }
 leptos = { version = "0.8", default-features = false }
 proc-macro2 = "1"
