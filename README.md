@@ -1,11 +1,13 @@
 # Formars
 
-Schema validation for Rust. The core is builder-first and macro-free — schemas are values you compose by hand; `#[derive(FormSchema)]` is available as an opt-in convenience via the separate [`formars-derive`](crates/formars-derive) crate.
+Schema validation for Rust. The core is builder-first and macro-free — schemas are values you compose by hand; `#[derive(FormSchema)]` is available as an opt-in convenience via the separate [`formars-derive`](crates/formars-derive) crate. The [`formars`](crates/formars) umbrella crate is the one-dependency entry point to all of it.
 
-> **Status: pre-0.1.** The core pieces are implemented — `formars-core` (schemas,
+> **Status: pre-0.1.** The core pieces are implemented — [`formars`](crates/formars) (the umbrella facade), `formars-core` (schemas,
 > values, errors), `formars-signals` (headless reactive form controller),
 > `formars-ui` (Leptos components), and `formars-derive` (`#[derive(FormSchema)]`) —
 > but the API is still allowed to change before the first release.
+>
+> Members and the `formars` umbrella move together; a breaking change anywhere bumps all five.
 
 ## Why
 
@@ -13,9 +15,11 @@ Rust validation crates usually ask you to describe your rules in attributes on a
 `formars` takes the other route, the one `zod` popularized: a schema is a *value* you build,
 compose, and pass around.
 
+Depend on `formars`, import one line, pay per tier:
+
 ```rust
-use formars_core::prelude::*;
-use formars_core::value::Object;
+use formars::prelude::*;
+use formars::formars_core::value::Object;
 
 let user = object()
     .field("email", string().email())
@@ -28,6 +32,12 @@ input.insert("age", Value::from("36"));
 let parsed = user.parse(&input).expect("valid input");
 assert_eq!(parsed.get("age"), Some(&Value::I64(36)));
 ```
+
+This is the default tier — schemas and typed errors, zero extra dependencies. Feature flags unlock the rest:
+
+- `signals` — headless reactive `FormController` + `Get`/`Set`/`Read` (adds reactive_graph);
+- `ui` — Leptos `<Form>`/`<TextField>` and hooks (implies `signals`; adds leptos);
+- `derive` — `#[derive(FormSchema)]` (host-side syn/quote cost only).
 
 ## Goals
 
@@ -54,11 +64,30 @@ assert_eq!(parsed.get("age"), Some(&Value::I64(36)));
 cargo test --workspace
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --check
+cargo build --workspace
+
+# Facade feature matrix: each combo must compile
+cargo check -p formars --no-default-features
+cargo check -p formars --features signals
+cargo check -p formars --features derive
+cargo check -p formars --features ui
+cargo check -p formars --all-features
+
+# Execute facade probes + doctests (gated probe files are compile-empty otherwise)
+cargo test -p formars --all-features
+
+# Dependency-economics audits
+cargo tree -p formars --no-default-features   # expect: formars -> formars-core ONLY
+cargo tree -p formars --features ui           # expect: exactly ONE reactive_graph 0.2.x subtree
 
 # wasm32 gate. The proc-macro crate is excluded (proc-macro crates cannot be
 # built FOR wasm32); consumers targeting wasm MAY still use the derive, since
 # the macro executes on the host compiler.
 cargo build --target wasm32-unknown-unknown --workspace --exclude formars-derive
+cargo build --target wasm32-unknown-unknown -p formars --all-features
+
+# Landing page renders all four tiers
+cargo doc --no-deps -p formars --all-features
 ```
 
 ## License

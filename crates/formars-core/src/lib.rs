@@ -1,3 +1,4 @@
+//! Aggregated entry point: the `formars` umbrella crate — one dependency, one import, pay per tier.
 //! Schema validation for Rust, composed with a fluent builder API.
 //!
 //! A schema is a *value* you build, compose, and pass around:

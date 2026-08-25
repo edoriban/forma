@@ -1,3 +1,4 @@
+//! Aggregated entry point: the `formars` umbrella crate — one dependency, one import, pay per tier.
 //! Headless reactive form controller built directly on `reactive_graph`.
 //!
 //! [`FormController`] owns an insertion-ordered registry of fields — one

@@ -3,13 +3,12 @@ name = "formars-csr-example"
 version = "0.1.0"
 edition = "2024"
 publish = false
-description = "Minimal standalone Leptos 0.8 CSR example consuming formars-ui."
+description = "Minimal standalone Leptos 0.8 CSR example consuming the formars facade."
 
 # Deliberately NOT a workspace member: keeps `cargo test --workspace` fast and
 # lets this example pin its own leptos feature set (`csr`) independently.
 [workspace]
 
 [dependencies]
-formars-ui = { path = "../../crates/formars-ui" }
-formars-core = { path = "../../crates/formars-core" }
+formars = { path = "../../crates/formars", features = ["ui"] }
 leptos = { version = "0.8", default-features = false, features = ["csr"] }

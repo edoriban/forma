@@ -1,0 +1,31 @@
+[package]
+name = "formars"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "One-dependency entry point to formars: schemas, reactive forms, Leptos components, and derives behind feature flags."
+
+[lib]
+name = "formars"
+
+[lints]
+workspace = true
+
+[features]
+default = []
+signals = ["dep:formars-signals", "dep:reactive_graph"]
+ui = ["dep:formars-ui", "dep:leptos", "signals"]
+derive = ["dep:formars-derive"]
+
+[dependencies]
+formars-core = { workspace = true }
+formars-signals = { workspace = true, optional = true }
+formars-ui = { workspace = true, optional = true }
+formars-derive = { workspace = true, optional = true }
+reactive_graph = { workspace = true, optional = true }
+leptos = { workspace = true, optional = true }
+
+[package.metadata.docs.rs]
+all-features = true

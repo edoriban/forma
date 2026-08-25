@@ -1,3 +1,4 @@
+//! Aggregated entry point: the `formars` umbrella crate — one dependency, one import, pay per tier.
 //! Opt-in `#[derive(FormSchema)]` for [`formars-core`] schemas.
 //!
 //! `formars-core` is builder-first and macro-free; this crate is the optional

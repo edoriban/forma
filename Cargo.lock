@@ -336,6 +336,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "formars"
+version = "0.1.0"
+dependencies = [
+ "formars-core",
+ "formars-derive",
+ "formars-signals",
+ "formars-ui",
+ "leptos",
+ "reactive_graph",
+]
+
+[[package]]
 name = "formars-core"
 version = "0.1.0"
 dependencies = [

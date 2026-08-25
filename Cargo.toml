@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/formars-core", "crates/formars-derive", "crates/formars-signals", "crates/formars-ui"]
+members = ["crates/formars", "crates/formars-core", "crates/formars-derive", "crates/formars-signals", "crates/formars-ui"]
 
 [workspace.package]
 edition = "2024"
@@ -10,6 +10,7 @@ repository = "https://github.com/edoriban/formars"
 
 [workspace.dependencies]
 # intentionally near-empty registry; future crates use workspace = true
+formars = { path = "crates/formars", version = "0.1.0" }
 formars-core = { path = "crates/formars-core", version = "0.1.0" }
 formars-derive = { path = "crates/formars-derive", version = "0.1.0" }
 formars-signals = { path = "crates/formars-signals", version = "0.1.0" }
