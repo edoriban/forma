@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 
 use reactive_graph::computed::ArcMemo;
 use reactive_graph::signal::ArcRwSignal;
-use reactive_graph::traits::{Get, Set};
+use reactive_graph::traits::{Get, Set, Update};
 
 use forma_core::error::{FieldPath, FormaError, FormaIssue};
 use forma_core::schema::DynSchema;
@@ -30,12 +30,32 @@ pub(crate) struct Inner {
     pub(crate) submitted: ArcRwSignal<bool>,
     pub(crate) is_submitting: ArcRwSignal<bool>,
     pub(crate) unmatched_server: ArcRwSignal<Vec<FormaIssue>>,
+    /// Bumped on every registration so memos reading the (non-reactive)
+    /// registry mutex re-run when fields are added after their first read.
+    pub(crate) registration_epoch: ArcRwSignal<usize>,
     pub(crate) fields: Mutex<Vec<(FieldPath, FieldCell, FieldHandle)>>,
 }
 
 struct FieldMemos {
     errors: ArcMemo<Vec<FormaIssue>>,
     visible: ArcMemo<Vec<FormaIssue>>,
+}
+
+/// RAII bracket for `is_submitting`: true on creation, false on drop, so a
+/// cancelled (dropped) submit future never leaves the flag stuck true.
+struct SubmittingGuard(ArcRwSignal<bool>);
+
+impl SubmittingGuard {
+    fn engage(flag: ArcRwSignal<bool>) -> Self {
+        flag.set(true);
+        Self(flag)
+    }
+}
+
+impl Drop for SubmittingGuard {
+    fn drop(&mut self) {
+        self.0.set(false);
+    }
 }
 
 struct ResetTargets {
@@ -81,10 +101,14 @@ impl FormController {
             submitted: ArcRwSignal::new(false),
             is_submitting: ArcRwSignal::new(false),
             unmatched_server: ArcRwSignal::new(Vec::new()),
+            registration_epoch: ArcRwSignal::new(0),
             fields: Mutex::new(Vec::new()),
         });
         let for_aggregate = inner.clone();
         let form_errors = ArcMemo::new(move |_| {
+            // Track the epoch so later registrations invalidate the aggregate;
+            // the mutex read below is invisible to the reactive graph.
+            let _epoch = for_aggregate.registration_epoch.get();
             let visible_per_field: Vec<ArcMemo<Vec<FormaIssue>>> = {
                 let fields = for_aggregate
                     .fields
@@ -251,6 +275,8 @@ impl FormController {
             return Err(RegisterError::Duplicate { path });
         }
         fields.push((path, cell, handle.clone()));
+        drop(fields);
+        self.inner.registration_epoch.update(|n| *n += 1);
         Ok(handle)
     }
 
@@ -403,8 +429,10 @@ impl FormController {
     /// Composes the submit boundary as a plain future: whole-form sync
     /// validation first (a failure resolves with [`SubmitError::Validation`]
     /// and never constructs `handler`), then a [`FormSnapshot`] gate,
-    /// `is_submitting` bracketing the awaited handler. No spawner required;
-    /// the caller owns scheduling.
+    /// `is_submitting` bracketing the attempt via a drop guard — the flag
+    /// resets on success, handler error, validation failure, AND when the
+    /// composed future is dropped (cancelled) mid-flight. No spawner
+    /// required; the caller owns scheduling.
     pub fn on_submit<T, E, F, Fut>(
         &self,
         handler: F,
@@ -415,13 +443,15 @@ impl FormController {
     {
         let this = self.clone();
         async move {
+            // Engaged before validation so a synchronous pre-flip (see the
+            // UI-side double-submit guard) is always reset exactly once, on
+            // every exit path including cancellation.
+            let _guard = SubmittingGuard::engage(this.inner.is_submitting.clone());
             if let Err(err) = this.validate() {
                 return Err(SubmitError::Validation(err));
             }
             let form = this.snapshot();
-            this.inner.is_submitting.set(true);
             let result = handler(form).await;
-            this.inner.is_submitting.set(false);
             result.map_err(SubmitError::Handler)
         }
     }

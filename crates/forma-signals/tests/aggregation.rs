@@ -116,3 +116,28 @@ fn fsvf2_form_errors_equals_visible_errors_plus_unmatched_server() {
             .any(|i| i.message == "ghost" && i.path == FieldPath::key("ghost"))
     );
 }
+
+#[test]
+fn fsvf2_field_registered_after_first_read_joins_aggregate() {
+    let mut c = FormController::new(ValidateOn::Submit);
+    let form_errors = c.form_errors();
+    assert!(
+        form_errors.get().is_empty(),
+        "empty registry aggregates nothing"
+    );
+    // Register AFTER the aggregate memo's first read: the registration epoch
+    // must invalidate the memo so the new field's signals are subscribed.
+    c.register(FieldPath::key("email"), Box::new(string().min(8)))
+        .unwrap();
+    c.field(&FieldPath::key("email"))
+        .unwrap()
+        .value()
+        .set(Value::from("ab"));
+    c.submitted().set(true); // Submit-mode display gate opens
+    let issues = form_errors.get();
+    assert!(
+        !issues.is_empty(),
+        "late-registered field's issues must reach the aggregate"
+    );
+    assert_eq!(issues[0].path, FieldPath::key("email"));
+}

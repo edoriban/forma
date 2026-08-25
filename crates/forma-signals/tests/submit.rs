@@ -148,3 +148,26 @@ fn fss4_snapshot_retains_pre_edit_values_during_in_flight_handler() {
     release_tx.send(()).expect("handler waiting");
     handle.join().expect("submit thread").unwrap();
 }
+
+#[test]
+fn fss2_dropped_future_resets_is_submitting() {
+    use std::future::Future;
+    use std::task::{Context, Poll};
+
+    let c = valid_form();
+    let mut fut = Box::pin(
+        c.on_submit(|_| std::future::pending::<Result<(), std::convert::Infallible>>()),
+    );
+    let waker = futures::task::noop_waker();
+    let mut cx = Context::from_waker(&waker);
+    assert!(matches!(fut.as_mut().poll(&mut cx), Poll::Pending));
+    assert!(
+        c.is_submitting().get(),
+        "flag must be true after the first poll"
+    );
+    drop(fut);
+    assert!(
+        !c.is_submitting().get(),
+        "dropping (cancelling) the composed future must reset the flag"
+    );
+}
