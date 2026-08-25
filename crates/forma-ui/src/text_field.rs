@@ -1,4 +1,4 @@
-//! `<TextField>` and its pure id/pushback seams.
+//! `<TextField>` and its pure id/SSR seams.
 
 use crate::use_form::try_form_controller;
 use forma_signals::FieldHandle;
@@ -7,6 +7,11 @@ use leptos::prelude::*;
 /// Derives the deterministic input id from a field path string: every
 /// non-alphanumeric run collapses to a single `'-'`, prefixed with `forma-`.
 /// Alphanumeric Unicode passes through untouched.
+///
+/// Known limitation: distinct paths can collide (`user.email` and
+/// `user-email` both become `forma-user-email`). When two fields' paths
+/// differ only in non-alphanumeric characters, pass an explicit `id` prop
+/// to disambiguate.
 pub(crate) fn sanitize_id(path: &str) -> String {
     let mut core = String::with_capacity(path.len());
     let mut prev_sep = false;
@@ -20,13 +25,6 @@ pub(crate) fn sanitize_id(path: &str) -> String {
         }
     }
     format!("forma-{}", core.trim_matches('-'))
-}
-
-/// Conditional-pushback predicate: the DOM value is rewritten only when it
-/// differs from the signal-derived string. Identical values must NOT rewrite,
-/// preserving caret position (FU-TF-2).
-pub(crate) fn should_push(dom: &str, sig: &str) -> bool {
-    dom != sig
 }
 
 /// SSR seam: the string emitted as the input's `value` ATTRIBUTE at render
@@ -72,13 +70,12 @@ pub fn TextField(
 
     let field_for_effect = field.clone();
     let input_id_for_label = input_id.clone();
-    // display side: conditional pushback (FU-TF-2)
+    // display side: conditional pushback (FU-TF-2) — rewrite the DOM value
+    // only when it differs from the signal string, so identical-value
+    // re-renders never move the caret.
     Effect::new(move |_| {
         let sig_str = field_for_effect.get_str().unwrap_or_default();
-        if let Some(el) = input_ref
-            .get()
-            .filter(|el| should_push(&el.value(), &sig_str))
-        {
+        if let Some(el) = input_ref.get().filter(|el| el.value() != sig_str) {
             el.set_value(&sig_str);
         }
     });
@@ -151,16 +148,10 @@ mod tests {
     }
 
     #[test]
-    fn should_push_equal_is_false() {
-        assert!(!should_push("abc", "abc"));
-        assert!(!should_push("", ""));
-    }
-
-    #[test]
-    fn should_push_divergent_is_true() {
-        assert!(should_push("", "abc"));
-        assert!(should_push("abc", ""));
-        assert!(should_push("old", "new"));
+    fn colliding_paths_documented_limitation() {
+        // `user.email` and `user-email` collide; the explicit `id` prop is
+        // the documented escape hatch.
+        assert_eq!(sanitize_id("user.email"), sanitize_id("user-email"));
     }
 
     // DOM-level assertion of the serialized attribute is not possible in

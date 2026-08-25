@@ -1,5 +1,5 @@
-//! FU-TF-1..5 data-level tests: signal flow through handles, blur seam,
-//! gated error rendering, label/id pairing. No browser, no DOM.
+//! FU-TF data-level tests: signal flow through handles, blur seam,
+//! gated error rendering. No browser, no DOM.
 
 use forma_core::prelude::*;
 use forma_signals::{FieldHandle, FieldPath, FormController, ValidateOn, Value};
@@ -45,24 +45,9 @@ fn tf1_external_write_tracked() {
     );
 }
 
-#[test]
-fn tf2_pushback_predicate_wiring() {
-    // The effect assigns DOM value only when dom != sig (the extracted
-    // `should_push` predicate; its full truth table is unit-tested
-    // in-module). Here we pin the data-level consequence: after an external
-    // reset diverges DOM from signal, the correction target equals the
-    // signal string.
-    let (c, handle) = setup(ValidateOn::Blur);
-    handle.set_str("typed");
-    c.reset();
-    let sig = handle.get_str().unwrap_or_default();
-    assert_eq!(sig, "");
-    // dom="typed", sig="" → divergent, rewrite required.
-    assert_ne!(
-        "typed", sig,
-        "divergent DOM must be corrected to the signal"
-    );
-}
+// tf2 (conditional pushback) lives in the DOM effect closure; it is not
+// natively testable without a browser. The id derivation (tf5) is
+// unit-tested in-module on the real `sanitize_id`.
 
 #[test]
 fn tf3_blur_marks_touched() {
@@ -111,35 +96,4 @@ fn tf4_errors_clear_reactively() {
     // corrected value → list empties with NO further interaction
     handle.set_str("user@example.com");
     assert!(handle.visible_errors().get().is_empty());
-}
-
-#[test]
-fn tf5_label_id_agree_derived() {
-    // The component derives id = format!("forma-{sanitized(path)}") for BOTH
-    // label[for] and input[id]; the derivation is unit-tested in-module.
-    // Contract pinned with the documented literal expectation:
-    let expected = "forma-user-email"; // key("user.email").to_string() sanitized
-    let path = "user.email";
-    // every non-alphanumeric run → single '-', "forma-" prefix:
-    let derived = format!(
-        "forma-{}",
-        path.chars()
-            .map(|c| if c.is_alphanumeric() { c } else { '-' })
-            .collect::<String>()
-            .replace("--", "-")
-    );
-    assert_eq!(derived, expected);
-}
-
-#[test]
-fn tf5_explicit_id_overrides_both() {
-    // Documented contract: an explicit `id` prop replaces the derived id on
-    // BOTH the label and the input. Pinned as the constant the component
-    // must honor (compile-side usage shown in tests/compile.rs).
-    let explicit: Option<String> = Some("custom-id".to_string());
-    assert_eq!(
-        explicit.as_deref(),
-        Some("custom-id"),
-        "explicit id prop overrides BOTH label and input ids"
-    );
 }
