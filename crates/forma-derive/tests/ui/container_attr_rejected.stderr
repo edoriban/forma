@@ -1,0 +1,5 @@
+error: container-level `#[form(..)]` attributes do not exist in v0; `#[form]` is recognized only on fields of a struct deriving `FormSchema`
+ --> tests/ui/container_attr_rejected.rs:4:1
+  |
+4 | #[form(deny_unknown_fields)]
+  | ^

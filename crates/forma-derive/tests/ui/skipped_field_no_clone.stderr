@@ -1,0 +1,5 @@
+error[E0277]: the trait bound `std::sync::mpsc::Receiver<u8>: Clone` is not satisfied
+ --> tests/ui/skipped_field_no_clone.rs:9:5
+  |
+9 |     handle: Receiver<u8>,
+  |     ^^^^^^ the trait `Clone` is not implemented for `std::sync::mpsc::Receiver<u8>`

@@ -1,0 +1,35 @@
+error[E0603]: trait `Schema` is private
+ --> tests/ui/dual_bound_missing_formbridge.rs:2:36
+  |
+2 | use forma_core::form::{FormSchema, Schema};
+  |                                    ^^^^^^ private trait
+  |
+note: the trait `Schema` is defined here
+ --> $WORKSPACE/crates/forma-core/src/form.rs
+  |
+  | use crate::schema::{DynSchema, Schema};
+  |                                ^^^^^^
+
+error[E0277]: `InnerSchema` is not a forma `Schema`
+  --> tests/ui/dual_bound_missing_formbridge.rs:56:19
+   |
+56 |     type Schema = InnerSchema;
+   |                   ^^^^^^^^^^^ expected a schema built from the `string()`, `number()`, `bool()` or `coerced()` builders
+   |
+help: the trait `Schema` is not implemented for `InnerSchema`
+  --> tests/ui/dual_bound_missing_formbridge.rs:8:1
+   |
+ 8 | pub struct InnerSchema {
+   | ^^^^^^^^^^^^^^^^^^^^^^
+   = help: the following other types implement trait `Schema`:
+             BoolSchema
+             CoercedSchema<T>
+             NumberSchema<T>
+             ObjectSchema
+             OuterSchema
+             StringSchema
+note: required by a bound in `forma_core::form::FormSchema::Schema`
+  --> $WORKSPACE/crates/forma-core/src/form.rs
+   |
+   |     type Schema: Schema<Input = Self, Output = Self> + DynSchema;
+   |                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `FormSchema::Schema`

@@ -1,0 +1,5 @@
+error: unknown attribute `lable`; expected one of: schema, rename, skip, label, description, placeholder
+ --> tests/ui/unknown_attr_key.rs:5:12
+  |
+5 |     #[form(lable = "Name")]
+  |            ^^^^^

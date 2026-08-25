@@ -29,6 +29,8 @@
 pub mod coerce;
 /// Error model: accumulated, path-addressed issues.
 pub mod error;
+/// Struct↔schema contracts and value bridging for the opt-in `forma-derive` crate.
+pub mod form;
 /// Curated re-exports for typical users.
 pub mod prelude;
 /// Custom validation rules that compose identically to built-in checks.

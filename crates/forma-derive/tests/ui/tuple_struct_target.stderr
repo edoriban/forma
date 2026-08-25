@@ -1,0 +1,5 @@
+error: `#[derive(FormSchema)]` does not support tuple structs in v0; only plain named-field structs are supported
+ --> tests/ui/tuple_struct_target.rs:4:12
+  |
+4 | struct Pair(String, u32);
+  |            ^^^^^^^^^^^^^

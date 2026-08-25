@@ -1,0 +1,5 @@
+error: cannot find attribute `form` in this scope
+ --> tests/ui/misplaced_attr.rs:3:3
+  |
+3 | #[form(label = "nope")]
+  |   ^^^^

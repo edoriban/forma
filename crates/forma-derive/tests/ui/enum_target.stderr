@@ -1,0 +1,5 @@
+error: `#[derive(FormSchema)]` does not support enums in v0; only plain named-field structs are supported
+ --> tests/ui/enum_target.rs:4:1
+  |
+4 | enum Choice {
+  | ^^^^

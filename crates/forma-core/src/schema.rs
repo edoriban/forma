@@ -113,6 +113,53 @@ pub trait ObjectChild: fmt::Debug + Send + Sync + sealed::Sealed {
     fn meta(&self) -> &FieldMeta;
 }
 
+/// Backs an [`crate::types::object::ObjectSchema`] field slot with any schema
+/// whose composed representation is an [`ObjectSchema`] (e.g. a derive
+/// companion from the separate `forma-derive` crate).
+///
+/// Pure delegation (NE-2): joined paths, inherited fail-fast and introspection
+/// come from the wrapped schema's own [`ObjectSchema::validate_at`] kernel —
+/// never reimplemented. The only contract is [`AsRef<ObjectSchema>`], so the
+/// adapter stays narrow while [`ObjectChild`] remains sealed.
+#[derive(Debug)]
+pub struct Nested<S> {
+    inner: S,
+}
+
+impl<S> Nested<S> {
+    /// Wraps a schema whose composed representation is an [`ObjectSchema`].
+    #[must_use]
+    pub fn new(inner: S) -> Self {
+        Self { inner }
+    }
+}
+
+impl<S> ObjectChild for Nested<S>
+where
+    S: fmt::Debug + Send + Sync + AsRef<crate::types::object::ObjectSchema>,
+{
+    fn validate_at(
+        &self,
+        v: &Value,
+        path: &FieldPath,
+        fail_fast: bool,
+    ) -> Result<Value, Vec<FormaIssue>> {
+        self.inner.as_ref().validate_at(v, path, fail_fast)
+    }
+
+    fn shape_node(&self) -> ShapeNode {
+        self.inner.as_ref().shape_node()
+    }
+
+    fn meta(&self) -> &FieldMeta {
+        self.inner.as_ref().meta()
+    }
+}
+
+// Explicit seal registration: `ObjectChild` carries the sealed supertrait, and
+// this is the single new in-crate implementor alongside the builtin families.
+impl<S> sealed::Sealed for Nested<S> {}
+
 /// One declared constraint as data — derived from the same check vector the
 /// kernels run, so introspection cannot drift from behavior.
 #[derive(Clone, Debug, PartialEq)]

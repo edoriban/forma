@@ -1,0 +1,5 @@
+error: `#[derive(FormSchema)]` does not support generic parameters in v0; only plain named-field structs are supported
+ --> tests/ui/lifetime_target.rs:4:14
+  |
+4 | struct Borrow<'a> {
+  |              ^

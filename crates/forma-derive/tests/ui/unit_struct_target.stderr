@@ -1,0 +1,7 @@
+error: `#[derive(FormSchema)]` does not support unit structs in v0; only plain named-field structs are supported
+ --> tests/ui/unit_struct_target.rs:3:10
+  |
+3 | #[derive(FormSchema)]
+  |          ^^^^^^^^^^
+  |
+  = note: this error originates in the derive macro `FormSchema` (in Nightly builds, run with -Z macro-backtrace for more info)

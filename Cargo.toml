@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/forma-core", "crates/forma-signals", "crates/forma-ui"]
+members = ["crates/forma-core", "crates/forma-derive", "crates/forma-signals", "crates/forma-ui"]
 
 [workspace.package]
 edition = "2024"
@@ -11,9 +11,14 @@ repository = "https://github.com/edoriban/forma"
 [workspace.dependencies]
 # intentionally near-empty registry; future crates use workspace = true
 forma-core = { path = "crates/forma-core", version = "0.1.0" }
+forma-derive = { path = "crates/forma-derive", version = "0.1.0" }
 forma-signals = { path = "crates/forma-signals", version = "0.1.0" }
 reactive_graph = { version = "0.2", default-features = false }
 leptos = { version = "0.8", default-features = false }
+proc-macro2 = "1"
+quote = "1"
+syn = { version = "2", features = ["full"] }
+trybuild = "1"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

@@ -1,0 +1,5 @@
+error: `skip` cannot be combined with any other `#[form(..)]` key: a skipped field has nothing left to configure
+ --> tests/ui/skip_conflict.rs:5:12
+  |
+5 |     #[form(skip, rename = "wire")]
+  |            ^^^^

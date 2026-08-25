@@ -1,0 +1,5 @@
+error: `#[derive(FormSchema)]` does not support generic parameters in v0; only plain named-field structs are supported
+ --> tests/ui/generic_struct_target.rs:4:15
+  |
+4 | struct Wrapper<T> {
+  |               ^
