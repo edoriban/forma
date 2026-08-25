@@ -6,6 +6,10 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 description = "Typed schema primitives with a dyn-safe erased view for form validation."
+keywords = ["forms", "validation", "schema", "coercion"]
+categories = ["rust-patterns"]
+documentation = "https://docs.rs/formars-core"
+readme = "README.md"
 
 [lints]
 workspace = true

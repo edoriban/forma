@@ -6,6 +6,10 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 description = "One-dependency entry point to formars: schemas, reactive forms, Leptos components, and derives behind feature flags."
+keywords = ["forms", "validation", "reactive", "leptos", "wasm"]
+categories = ["gui", "wasm"]
+documentation = "https://docs.rs/formars"
+readme = "README.md"
 
 [lib]
 name = "formars"
