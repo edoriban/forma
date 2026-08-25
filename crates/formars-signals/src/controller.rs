@@ -459,7 +459,12 @@ impl FormController {
         }
     }
 
-    /// Restores every field to its pristine registered state.
+    /// Restores every field to its pristine registered state and clears all
+    /// form-level (unmatched) server issues.
+    ///
+    /// The [`FormController::submitted`] flag is deliberately NOT cleared:
+    /// the caller owns it, mirroring [`FormController::on_submit`] (which
+    /// never flips it).
     pub fn reset(&self) {
         let restored: Vec<ResetTargets> = {
             let fields = self.lock_fields();
@@ -487,6 +492,10 @@ impl FormController {
             server.set(Vec::new());
             baseline.set(initial);
         }
+        // Outside the registry mutex (targets collected and the guard dropped
+        // above — same discipline as `apply_server_errors`); the form_errors
+        // aggregate memo re-reads this signal, so invalidation flows on its own.
+        self.inner.unmatched_server.set(Vec::new());
     }
 
     pub(crate) fn lock_fields(&self) -> MutexGuard<'_, Vec<(FieldPath, FieldCell, FieldHandle)>> {

@@ -257,3 +257,149 @@ fn fsm7_reset_restores_untouched_clean_initial_consistent() {
         "errors consistent with restored initial value"
     );
 }
+
+/// Reset on a pristine controller is a safe no-op: no panic, state unchanged.
+#[test]
+fn fsm7_reset_on_pristine_controller_is_safe_noop() {
+    let mut c = controller();
+    c.register(FieldPath::key("a"), Box::new(string())).unwrap();
+    c.reset();
+    let h = c.field(&FieldPath::key("a")).unwrap();
+    assert_eq!(h.value().get(), Value::from(""));
+    assert!(!h.touched().get());
+    assert!(!h.dirty().get());
+    assert!(h.visible_errors().get().is_empty());
+}
+
+/// Documented contract: `submitted` is caller-owned — reset deliberately
+/// does NOT clear it (mirroring `on_submit`, which never flips it).
+#[test]
+fn fsm7_submitted_survives_reset() {
+    use reactive_graph::traits::Set;
+    let mut c = controller();
+    c.register(FieldPath::key("a"), Box::new(string())).unwrap();
+    c.submitted().set(true);
+    c.reset();
+    assert!(
+        c.submitted().get(),
+        "`submitted` must survive reset: the caller owns it"
+    );
+}
+
+/// Full per-field restoration: values return to initials, touched=false,
+/// per-field server cells cleared, baselines re-anchored to the initial.
+#[test]
+fn fsm7_reset_restores_fields_clears_server_cells_reanchors_baselines() {
+    let mut c = controller();
+    c.register_initial(
+        FieldPath::key("email"),
+        Box::new(string()),
+        Value::from("P"),
+    )
+    .unwrap();
+    let path = FieldPath::key("email");
+    let err = FormaIssueStamp::err(&path);
+    c.apply_server_errors(&err);
+    let h = c.field(&path).unwrap();
+    assert!(
+        h.visible_errors()
+            .get()
+            .iter()
+            .any(|i| i.message == "taken"),
+        "server issue visible while sitting on the preset baseline"
+    );
+    h.value().set(Value::from("away"));
+    c.mark_touched(&path);
+    assert!(h.touched().get() && h.dirty().get());
+
+    c.reset();
+
+    let h = c.field(&path).unwrap();
+    assert_eq!(
+        h.value().get(),
+        Value::from("P"),
+        "values restored to registration initial"
+    );
+    assert!(!h.touched().get(), "touched=false after reset");
+    assert!(!h.dirty().get());
+    assert!(
+        !h.visible_errors()
+            .get()
+            .iter()
+            .any(|i| i.message == "taken"),
+        "per-field server cells cleared by reset"
+    );
+}
+
+/// Tiny helper so the reset tests can build a one-issue server error without
+/// repeating the struct literal.
+struct FormaIssueStamp;
+
+impl FormaIssueStamp {
+    fn err(path: &FieldPath) -> formars_core::error::FormaError {
+        formars_core::error::FormaError {
+            issues: vec![formars_core::error::FormaIssue {
+                path: path.clone(),
+                code: IssueCode::Refine,
+                message: "taken".into(),
+                params: Vec::new(),
+            }],
+        }
+    }
+}
+
+/// Display seam matrix (spec Domain 4): THE canonical rendering for input
+/// surfaces — String passthrough, numeric/bool shortest-roundtrip,
+/// composite/null blank.
+#[test]
+fn display_str_matrix_covers_all_value_variants() {
+    let mut c = controller();
+    c.register(FieldPath::key("f"), Box::new(string())).unwrap();
+    let h = c.field(&FieldPath::key("f")).unwrap();
+
+    h.value().set(Value::from("hello"));
+    assert_eq!(h.display_str(), "hello", "String passthrough");
+
+    h.value().set(Value::I64(42));
+    assert_eq!(h.display_str(), "42", "I64 shortest-roundtrip");
+
+    h.value().set(Value::F64(0.1));
+    assert_eq!(
+        h.display_str(),
+        "0.1",
+        "F64 shortest-roundtrip losslessness"
+    );
+
+    h.value().set(Value::Bool(true));
+    assert_eq!(h.display_str(), "true");
+    h.value().set(Value::Bool(false));
+    assert_eq!(h.display_str(), "false");
+
+    h.value().set(Value::Null);
+    assert_eq!(h.display_str(), "", "Null stays blank");
+
+    h.value()
+        .set(Value::Array(vec![Value::I64(1), Value::I64(2)]));
+    assert_eq!(h.display_str(), "", "Array stays blank");
+
+    let mut o = formars_core::value::Object::new();
+    o.insert("k", Value::I64(1));
+    h.value().set(Value::Object(o));
+    assert_eq!(h.display_str(), "", "Object stays blank");
+}
+
+/// Programmatic typed setters followed by render must show canonical
+/// strings, not blank (spec Domain 4 regression pin).
+#[test]
+fn display_str_shows_programmatic_i64_not_blank() {
+    let mut c = controller();
+    c.register(FieldPath::key("n"), Box::new(coerced::<u32>()))
+        .unwrap();
+    let h = c.field(&FieldPath::key("n")).unwrap();
+    h.set_i64(42);
+    assert_eq!(
+        h.display_str(),
+        "42",
+        "programmatic set_i64 renders canonically"
+    );
+}

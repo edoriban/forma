@@ -6,6 +6,10 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 description = "Headless reactive form controller on reactive_graph: registry, validation timing, submit boundary, server-error merging."
+keywords = ["reactive", "forms", "validation", "signals", "wasm"]
+categories = ["rust-patterns", "wasm"]
+documentation = "https://docs.rs/formars-signals"
+readme = "README.md"
 
 [lints]
 workspace = true

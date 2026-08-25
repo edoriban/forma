@@ -137,3 +137,44 @@ fn fss5_reapply_replaces_not_appends_server_cells() {
     assert_eq!(visible.len(), 1, "reapply must replace prior server issues");
     assert_eq!(visible[0].code, IssueCode::Max);
 }
+
+/// Reset kills form-level (unmatched) server issues — they must not survive
+/// as ghosts after the fields are restored — and a subsequent apply routes
+/// normally again (spec Domain 3 regression pin).
+#[test]
+fn fss5_reset_kills_ghost_form_level_issue_then_apply_works_again() {
+    let mut c = FormController::new(ValidateOn::Blur);
+    c.register(FieldPath::key("known"), Box::new(string()))
+        .unwrap();
+    let ghost = FieldPath::key("ghost");
+    let err = FormaError {
+        issues: vec![issue(ghost.clone(), IssueCode::Refine, "ghost rule")],
+    };
+    c.apply_server_errors(&err);
+    assert!(
+        c.form_errors().get().iter().any(|i| i.path == ghost),
+        "ghost issue must be visible at form level before reset"
+    );
+    c.reset();
+    assert!(
+        !c.form_errors().get().iter().any(|i| i.path == ghost),
+        "reset must clear form-level (unmatched) server issues"
+    );
+    let second = FormaError {
+        issues: vec![issue(
+            FieldPath::key("known"),
+            IssueCode::Refine,
+            "fresh server verdict",
+        )],
+    };
+    c.apply_server_errors(&second);
+    let known = c.field(&FieldPath::key("known")).unwrap();
+    assert!(
+        known
+            .visible_errors()
+            .get()
+            .iter()
+            .any(|i| i.message == "fresh server verdict"),
+        "apply after reset must work normally"
+    );
+}

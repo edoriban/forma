@@ -87,6 +87,24 @@ impl FieldHandle {
         self.value.get().as_str().map(str::to_owned)
     }
 
+    /// Canonical display rendering of the current value for `<input>`
+    /// surfaces: `String` → itself; `I64`/`F64` → shortest-roundtrip
+    /// `ToString`; `Bool` → `"true"`/`"false"`; `Null`/`Array`/`Object` →
+    /// `""`.
+    ///
+    /// This is THE single display seam consumed by formars-ui (SSR attribute
+    /// and pushback effect alike) — never add a second coercion site.
+    #[must_use]
+    pub fn display_str(&self) -> String {
+        match self.value.get() {
+            Value::String(s) => s.to_string(),
+            Value::I64(i) => i.to_string(),
+            Value::F64(f) => f.to_string(),
+            Value::Bool(b) => b.to_string(),
+            Value::Null | Value::Array(_) | Value::Object(_) => String::new(),
+        }
+    }
+
     /// Sets `Value::String(s)` exactly — no coercion.
     pub fn set_str(&self, s: &str) {
         self.value.set(Value::from(s));
