@@ -1,0 +1,5 @@
+error: duplicate wire key `"k"`: fields `a` and `b` both resolve to it; object lookup is last-write-wins, so rename one with `#[form(rename = "..")]`
+  --> tests/ui/duplicate_wire_key_renames.rs:12:5
+   |
+12 |     b: String,
+   |     ^

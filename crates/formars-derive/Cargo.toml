@@ -6,6 +6,10 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 description = "Opt-in `#[derive(FormSchema)]` companion for formars-core."
+keywords = ["derive", "forms", "schema", "proc-macro"]
+categories = ["rust-patterns"]
+documentation = "https://docs.rs/formars-derive"
+readme = "README.md"
 
 [lints]
 workspace = true

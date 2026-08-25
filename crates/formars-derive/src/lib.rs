@@ -82,10 +82,17 @@
 //! | `bool` | `bool()` |
 //! | `i8`, `i16`, `i32`, `i64`, `u8`, `u16`, `u32`, `f32`, `f64` | `coerced::<T>()` (HTML forms deliver strings) |
 //! | Any type implementing `FormSchema` | Nested composition via `Nested::new(<T as FormSchema>::form_schema())` |
-//! | Anything else | Compile error naming the field, suggesting `#[form(schema = ..)]` |
+//! | Anything else (aliases included) | Compile error naming the field, suggesting `#[form(schema = ..)]` |
 //!
-//! Aliased primitives work (`type Age = u32;`) because mapping resolves by
-//! trait bounds, not by name matching.
+//! Mapping is strictly NAME-based: only a single-segment path whose final
+//! segment is exactly an identifier from the table above resolves to its
+//! builder. Type aliases (`type Age = u32;`) are NOT resolved by trait
+//! bounds: they fall through to nested composition and compile only if the
+//! aliased type independently implements `FormSchema` + `FormBridge`.
+//! Fully-qualified primitive paths (`::std::string::String`,
+//! `::core::primitive::u32`) are not mapped by name either; the derive
+//! rejects them with a targeted compile error suggesting the bare name or
+//! `#[form(schema = ..)]`.
 //!
 //! # Generated contract
 //!

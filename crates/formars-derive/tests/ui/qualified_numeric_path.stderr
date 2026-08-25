@@ -1,0 +1,5 @@
+error: field `n`: primitive `u32` written as a multi-segment path is not mapped by name; use the bare type name (`u32`) or `#[form(schema = ..)]`
+ --> tests/ui/qualified_numeric_path.rs:8:5
+  |
+8 |     n: ::core::primitive::u32,
+  |     ^

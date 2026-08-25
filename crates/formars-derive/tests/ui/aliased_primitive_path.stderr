@@ -1,0 +1,29 @@
+error[E0277]: `u32` is not a formars `FormSchema`
+  --> tests/ui/aliased_primitive_path.rs:12:10
+   |
+12 |     age: Age,
+   |          ^^^ nested form fields require `#[derive(FormSchema)]` (crate `formars-derive`) or a manual `FormSchema` impl
+   |
+   = help: the trait `FormSchema` is not implemented for `u32`
+   = note: add `#[derive(FormSchema)]` on `u32`, or use `#[form(schema = <expr>)]` on the field
+help: the trait `FormSchema` is implemented for `S`
+  --> tests/ui/aliased_primitive_path.rs:10:10
+   |
+10 | #[derive(FormSchema)]
+   |          ^^^^^^^^^^
+   = note: this error originates in the derive macro `FormSchema` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: `u32` is not a formars `FormSchema`
+  --> tests/ui/aliased_primitive_path.rs:12:5
+   |
+12 |     age: Age,
+   |     ^^^ nested form fields require `#[derive(FormSchema)]` (crate `formars-derive`) or a manual `FormSchema` impl
+   |
+   = help: the trait `FormSchema` is not implemented for `u32`
+   = note: add `#[derive(FormSchema)]` on `u32`, or use `#[form(schema = <expr>)]` on the field
+help: the trait `FormSchema` is implemented for `S`
+  --> tests/ui/aliased_primitive_path.rs:10:10
+   |
+10 | #[derive(FormSchema)]
+   |          ^^^^^^^^^^
+   = note: this error originates in the derive macro `FormSchema` (in Nightly builds, run with -Z macro-backtrace for more info)

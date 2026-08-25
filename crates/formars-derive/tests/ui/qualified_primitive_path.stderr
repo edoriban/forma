@@ -1,0 +1,5 @@
+error: field `s`: primitive `String` written as a multi-segment path is not mapped by name; use the bare type name (`String`) or `#[form(schema = ..)]`
+ --> tests/ui/qualified_primitive_path.rs:9:5
+  |
+9 |     s: ::std::string::String,
+  |     ^

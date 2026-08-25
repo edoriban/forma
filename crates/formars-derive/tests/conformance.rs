@@ -238,7 +238,91 @@ fn ex6_skipped_field_struct_as_nested_child_fails_typed_parse_with_type_mismatch
     );
 }
 
-// ------------------------------------------- AT-4 metadata + AT-1 override (C.5)
+// ------------------------------------------------- AT-4 metadata + AT-1 override (C.5)
+
+// Dup-wire-key exemption (spec Domain 1): skipped fields contribute no wire
+// key, so a skipped field whose IDENT equals a wired key must NOT trip the
+// dup-key rejection. (`rename = "..", skip` cannot coexist in the v0
+// grammar, so the ident collision is the only expressible variant.)
+#[derive(FormSchema)]
+struct SkippedKeyExempt {
+    wired: String,
+    #[form(skip)]
+    wired_and_also_secret: u32,
+}
+
+#[test]
+fn skipped_field_ident_equal_to_wired_key_compiles() {
+    let input = SkippedKeyExempt {
+        wired: "x".into(),
+        wired_and_also_secret: 7,
+    };
+    let out = <SkippedKeyExemptSchema as Schema>::parse(&SkippedKeyExemptSchema::new(), &input)
+        .expect("skipped fields are exempt from wire-key collisions");
+    assert_eq!(out.wired, "x");
+    assert_eq!(out.wired_and_also_secret, 7);
+}
+
+// Docs-vs-behavior conformance (spec Domain 1): a fully-qualified primitive
+// path with a `schema` override COMPILES — the override wins and the
+// mapping layer (incl. the qualified-primitive diagnostic) is never consulted.
+#[derive(FormSchema)]
+struct QualifiedOverride {
+    #[form(schema = string())]
+    s: ::std::string::String,
+}
+
+#[test]
+fn at1_schema_override_suppresses_qualified_primitive_diagnostic() {
+    let erased: Box<dyn DynSchema> = Box::new(QualifiedOverrideSchema::new());
+    let input = obj(&[("s", Value::from("override applied"))]);
+    assert!(
+        erased.validate_value(&input).is_empty(),
+        "`#[form(schema = ..)]` must win over the qualified-primitive guard"
+    );
+    let bad = obj(&[("s", Value::Bool(true))]);
+    let issues = erased.validate_value(&bad);
+    assert_eq!(issues.len(), 1, "string() override enforced");
+    assert_eq!(issues[0].code, IssueCode::TypeMismatch);
+}
+
+// Docs-vs-behavior conformance (spec Domain 1): type ALIASES are not mapped
+// by name. `Count` derives the traits; its alias composes as a nested child —
+// proof that mapping keys on single-segment NAMES, never on what the alias
+// points at (the aliased `u32` matrix member is irrelevant here).
+#[derive(FormSchema)]
+struct Count {
+    n: u32,
+}
+
+/// Alias of a derived struct: final segment `Counter` is unknown to the
+/// mapping table, so the field falls through to nested composition.
+type Counter = Count;
+
+#[derive(FormSchema)]
+struct AliasFallThrough {
+    counter: Counter,
+}
+
+#[test]
+fn alias_composes_as_nested_child_not_by_name() {
+    let erased: Box<dyn DynSchema> = Box::new(AliasFallThroughSchema::new());
+    // Nested child: the wire value is an OBJECT (composed child), not the
+    // coerced form-string a name/numeric mapping would demand.
+    let input = obj(&[("counter", obj(&[("n", Value::from("3"))]))]);
+    assert!(
+        erased.validate_value(&input).is_empty(),
+        "alias must fall through to nested composition"
+    );
+    // Had the alias been resolved by name/bounds to the aliased primitive,
+    // a bare u32 wire value would have been accepted — it is not.
+    let as_scalar = obj(&[("counter", Value::from("3"))]);
+    assert_eq!(
+        erased.validate_value(&as_scalar).len(),
+        1,
+        "alias did NOT resolve to the numeric coercion mapping"
+    );
+}
 
 #[derive(FormSchema)]
 struct MetaFields {

@@ -116,13 +116,17 @@ impl FieldPlan {
 
 /// The EX-4 primitive set recognized by name mapping (`String`, `bool`, and
 /// the coerced numeric matrix). Everything else composes as a nested child.
+/// Single source of truth for every name-based mapping decision.
+const KNOWN_PRIMITIVES: &[&str] = &[
+    "String", "bool", "i8", "i16", "i32", "i64", "u8", "u16", "u32", "f32", "f64",
+];
+
+/// The coerced numeric subset of [`KNOWN_PRIMITIVES`] whose wire
+/// representation is the form string `coerced::<T>()` consumes.
+const NUMERIC_MATRIX: &[&str] = &["i8", "i16", "i32", "i64", "u8", "u16", "u32", "f32", "f64"];
+
 fn is_known_primitive(ty: &Type) -> bool {
-    matches!(
-        single_segment_ident(ty).as_deref(),
-        Some(
-            "String" | "bool" | "i8" | "i16" | "i32" | "i64" | "u8" | "u16" | "u32" | "f32" | "f64"
-        )
-    )
+    single_segment_ident(ty).is_some_and(|segment| KNOWN_PRIMITIVES.contains(&segment.as_str()))
 }
 
 /// Default field mapping (EX-4): `String → string()`, `bool → bool()`,
@@ -136,15 +140,18 @@ fn is_known_primitive(ty: &Type) -> bool {
 fn default_child(plan: &FieldPlan) -> TokenStream {
     let span = plan.ident.span();
     let ty = &plan.ty;
-    match single_segment_ident(ty).as_deref() {
-        Some("String") => quote_spanned! { span=> ::formars_core::types::string() },
-        Some("bool") => quote_spanned! { span=> ::formars_core::types::bool() },
-        Some("i8" | "i16" | "i32" | "i64" | "u8" | "u16" | "u32" | "f32" | "f64") => {
-            quote_spanned! { span=> ::formars_core::coerce::coerced::<#ty>() }
-        }
-        _ => quote_spanned! { span=>
-            ::formars_core::schema::Nested::new(<#ty as ::formars_core::form::FormSchema>::form_schema())
-        },
+    let segment = single_segment_ident(ty);
+    if segment.as_deref() == Some("String") {
+        return quote_spanned! { span=> ::formars_core::types::string() };
+    }
+    if segment.as_deref() == Some("bool") {
+        return quote_spanned! { span=> ::formars_core::types::bool() };
+    }
+    if segment.is_some_and(|name| NUMERIC_MATRIX.contains(&name.as_str())) {
+        return quote_spanned! { span=> ::formars_core::coerce::coerced::<#ty>() };
+    }
+    quote_spanned! { span=>
+        ::formars_core::schema::Nested::new(<#ty as ::formars_core::form::FormSchema>::form_schema())
     }
 }
 
@@ -181,14 +188,53 @@ fn single_segment_ident(ty: &Type) -> Option<String> {
     None
 }
 
+/// The final path segment's identifier when it carries no generic arguments,
+/// regardless of how many segments precede it.
+fn final_segment_ident(ty: &Type) -> Option<String> {
+    if let Type::Path(path) = ty
+        && path.qself.is_none()
+        && let Some(segment) = path.path.segments.last()
+        && segment.arguments.is_empty()
+    {
+        return Some(segment.ident.to_string());
+    }
+    None
+}
+
+/// Qualified-primitive guard: a multi-segment path whose FINAL segment is a
+/// known primitive (`::std::string::String`, `::core::primitive::u32`) is NOT
+/// mapped by name — name mapping keys on single-segment paths only. Emit the
+/// targeted diagnostic instead of letting the field fall through to nested
+/// composition and die as E0277 bound noise suggesting `FormSchema` on the
+/// primitive. Schema overrides win (mapping layer never consulted); bare
+/// single-segment names take the normal mapping path untouched.
+fn reject_qualified_primitives(plans: &[FieldPlan]) -> Result<(), syn::Error> {
+    for plan in plans {
+        if plan.attrs.schema.is_some() || single_segment_ident(&plan.ty).is_some() {
+            continue;
+        }
+        if let Some(primitive) = final_segment_ident(&plan.ty)
+            && KNOWN_PRIMITIVES.contains(&primitive.as_str())
+        {
+            return Err(syn::Error::new(
+                plan.ident.span(),
+                format!(
+                    "field `{}`: primitive `{primitive}` written as a multi-segment path \
+                     is not mapped by name; use the bare type name (`{primitive}`) or \
+                     `#[form(schema = ..)]`",
+                    plan.ident
+                ),
+            ));
+        }
+    }
+    Ok(())
+}
+
 /// True for the EX-4 numeric matrix (`i8..i64`, `u8..u32`, `f32`, `f64`),
 /// whose wire representation is the form-string the `coerced::<T>()` child
 /// consumes.
 fn is_numeric_matrix(ty: &Type) -> bool {
-    matches!(
-        single_segment_ident(ty).as_deref(),
-        Some("i8" | "i16" | "i32" | "i64" | "u8" | "u16" | "u32" | "f32" | "f64")
-    )
+    single_segment_ident(ty).is_some_and(|segment| NUMERIC_MATRIX.contains(&segment.as_str()))
 }
 
 /// Expands the derive into the full generated contract.
@@ -238,8 +284,31 @@ pub(crate) fn expand(input: &DeriveInput) -> Result<TokenStream, syn::Error> {
         }
     }
 
+    // Qualified-primitive guard: multi-segment primitive paths are not
+    // mapped by name; targeted diagnostic instead of downstream E0277 noise.
+    reject_qualified_primitives(&plans)?;
+
     let active: Vec<&FieldPlan> = plans.iter().filter(|p| !p.attrs.skip).collect();
     let skipped: Vec<&FieldPlan> = plans.iter().filter(|p| p.attrs.skip).collect();
+
+    // Dup-wire-key rejection (pre-1.0 accepted break): after rename
+    // resolution, two non-skipped fields resolving to the SAME wire key would
+    // silently collapse last-write-wins in core's object lookup. Skipped
+    // fields never enter `active`, so they are exempt by construction.
+    let mut seen: std::collections::HashMap<&str, &Ident> = std::collections::HashMap::new();
+    for plan in &active {
+        if let Some(previous) = seen.insert(plan.key.as_str(), &plan.ident) {
+            return Err(syn::Error::new(
+                plan.ident.span(),
+                format!(
+                    "duplicate wire key `\"{}\"`: fields `{}` and `{}` both resolve to it; \
+                     object lookup is last-write-wins, so rename one with \
+                     `#[form(rename = \"..\")]`",
+                    plan.key, previous, plan.ident
+                ),
+            ));
+        }
+    }
 
     let struct_ident = &input.ident;
     let companion = format_ident!("{}Schema", input.ident);
