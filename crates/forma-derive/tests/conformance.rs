@@ -201,6 +201,43 @@ fn ex6_skipped_field_passes_through_untouched_in_typed_parse() {
     assert_eq!(out.a, "x");
 }
 
+/// Documented v0 asymmetry (verify finding W2): a derived struct with skipped
+/// fields declines erased `from_validated`, so using it as a NESTED CHILD
+/// compiles but fails typed parse at runtime — the parent's reconstruction
+/// cannot rebuild the child from validated output alone.
+#[derive(FormSchema)]
+struct SkippedChild {
+    a: String,
+    #[form(skip)]
+    secret: String,
+}
+
+#[derive(FormSchema)]
+struct ParentOfSkipped {
+    child: SkippedChild,
+}
+
+#[test]
+fn ex6_skipped_field_struct_as_nested_child_fails_typed_parse_with_type_mismatch() {
+    let input = ParentOfSkipped {
+        child: SkippedChild {
+            a: "x".into(),
+            secret: "s".into(),
+        },
+    };
+    let Err(err) = <ParentOfSkippedSchema as Schema>::parse(&ParentOfSkippedSchema::new(), &input)
+    else {
+        panic!("skipped-field child must decline erased bridging in v0");
+    };
+    assert_eq!(err.issues.len(), 1);
+    assert_eq!(err.issues[0].code, IssueCode::TypeMismatch);
+    assert_eq!(err.issues[0].path.to_string(), "child");
+    assert_eq!(
+        err.issues[0].message,
+        "validated output is missing this field"
+    );
+}
+
 // ------------------------------------------- AT-4 metadata + AT-1 override (C.5)
 
 #[derive(FormSchema)]

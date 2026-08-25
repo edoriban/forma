@@ -1,0 +1,5 @@
+error: metadata attributes (label/description/placeholder) are not supported on nested field `inner` in v0; use `#[form(schema = <expr>)]` to compose the slot
+  --> tests/ui/meta_on_nested_field.rs:10:5
+   |
+10 |     inner: Inner,
+   |     ^^^^^

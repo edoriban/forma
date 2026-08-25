@@ -103,7 +103,10 @@
 //! hand-written `FormSchema` impl without `FormBridge` fails compilation.
 //!
 //! Skipped fields must implement `Clone`: typed parse copies them verbatim
-//! from the input.
+//! from the input. Because such a struct declines erased reconstruction in
+//! v0, it must NOT be used as a nested child — the parent compiles but typed
+//! parse fails at runtime with `TypeMismatch` ("validated output is missing
+//! this field").
 //!
 //! Deviation from the spec's soft zero-sized-companion preference: `XSchema`
 //! stores its composed `ObjectSchema` instead of being a ZST. This buys the
