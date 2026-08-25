@@ -31,8 +31,12 @@ pub(crate) fn sanitize_id(path: &str) -> String {
 /// time, so server-rendered markup carries prefilled (`register_initial`)
 /// content. Client-side updates keep flowing through the pushback effect;
 /// the attribute is captured once and never rewritten reactively.
+///
+/// Renders via [`FieldHandle::display_str`] — THE single display seam — so
+/// numeric/bool initials appear canonically (behavior change vs. earlier
+/// releases, which blanked any non-string initial; noted in CHANGELOG).
 pub(crate) fn ssr_initial(field: &FieldHandle) -> String {
-    field.get_str().unwrap_or_default()
+    field.display_str()
 }
 
 /// One bound string field: bidirectional value bridge over the handle's
@@ -50,9 +54,14 @@ pub(crate) fn ssr_initial(field: &FieldHandle) -> String {
 ///
 /// # No-provider blur behavior (L-1)
 ///
-/// When no ancestor called [`crate::use_form`], blur resolution yields
-/// `None` and marking is skipped: headless usage still renders and binds
-/// correctly, it simply never marks touched.
+/// The controller is resolved ONCE in the component body at mount time and
+/// the resulting [`Option<FormController>`] is moved into the `on:blur`
+/// closure — event-time owner restoration is never relied upon. When no
+/// ancestor had called [`crate::use_form`] at mount, the captured value is
+/// `None` and marking is skipped silently: headless usage still renders and
+/// binds correctly, it simply never marks touched. A provider mounted BELOW
+/// the field is not seen by an already-mounted field (documented eager
+/// resolution mode).
 #[component]
 // reason: typed-builder consumes props by value; component fns are never called directly
 #[allow(
@@ -68,13 +77,18 @@ pub fn TextField(
     let input_id = id.unwrap_or_else(|| sanitize_id(&field.path().to_string()));
     let input_ref = NodeRef::<leptos::html::Input>::new();
 
+    // Controller resolution happens EXACTLY ONCE, at build time (spec
+    // Domain 4): the blur closure consults only this captured value — never
+    // a context lookup at event time.
+    let controller_for_blur = try_form_controller();
+
     let field_for_effect = field.clone();
     let input_id_for_label = input_id.clone();
     // display side: conditional pushback (FU-TF-2) — rewrite the DOM value
     // only when it differs from the signal string, so identical-value
     // re-renders never move the caret.
     Effect::new(move |_| {
-        let sig_str = field_for_effect.get_str().unwrap_or_default();
+        let sig_str = field_for_effect.display_str();
         if let Some(el) = input_ref.get().filter(|el| el.value() != sig_str) {
             el.set_value(&sig_str);
         }
@@ -101,7 +115,7 @@ pub fn TextField(
                 node_ref=input_ref
                 on:input=move |ev| field_for_input.set_str(&event_target_value(&ev))
                 on:blur=move |_| {
-                    if let Some(controller) = try_form_controller() {
+                    if let Some(controller) = &controller_for_blur {
                         controller.mark_touched(field_for_blur.path());
                     }
                 }
@@ -186,5 +200,25 @@ mod tests {
             )
             .unwrap();
         assert_eq!(ssr_initial(&h), "");
+    }
+
+    /// SSR output change pin (spec Domain 4): numeric initials now render
+    /// canonically in the `value` attribute (previously blank).
+    #[test]
+    fn ssr_initial_carries_numeric_initial_canonically() {
+        use formars_signals::{FieldPath, FormController, ValidateOn, Value};
+        let mut c = FormController::new(ValidateOn::Blur);
+        let h = c
+            .register_initial(
+                FieldPath::key("qty"),
+                Box::new(formars_core::prelude::coerced::<u32>()),
+                Value::I64(7),
+            )
+            .unwrap();
+        assert_eq!(
+            ssr_initial(&h),
+            "7",
+            "the value attribute seam must render numeric initials canonically"
+        );
     }
 }

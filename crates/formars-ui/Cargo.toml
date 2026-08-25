@@ -6,6 +6,10 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 description = "Leptos 0.8 companion crate for formars-signals: use_form hook, <Form> submit wrapper, <TextField>."
+keywords = ["leptos", "forms", "ui", "components"]
+categories = ["gui", "wasm"]
+documentation = "https://docs.rs/formars-ui"
+readme = "README.md"
 
 [lints]
 workspace = true

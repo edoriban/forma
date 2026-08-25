@@ -4,6 +4,7 @@ use formars_signals::{FormController, FormSnapshot, FormaError, SubmitError};
 use leptos::callback::Callback;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
+use reactive_graph::traits::Update;
 use std::future::Future;
 
 /// Mirrors [`SubmitError`] arms plus success, delivered to the caller's
@@ -36,17 +37,35 @@ pub(crate) fn map_outcome<T, E>(result: Result<T, SubmitError<E>>) -> SubmitOutc
 /// synchronous `submitted` flip that activates visibility gates BEFORE any
 /// async work (FU-FM-2). Returns `false` when an attempt is already running.
 ///
+/// Acquisition is a single atomic CAS over `is_submitting`: the signal's
+/// internal write lock is held across read+write, so among arbitrarily many
+/// concurrent callers (the controller is `Sync`) EXACTLY ONE observes
+/// `false` and flips it; every loser observes `true`, returns `false` with
+/// no flag write and no notified reactive write. The `submitted` flip happens
+/// only for the unique winner, AFTER acquisition.
+///
 /// `is_submitting` flips true SYNCHRONOUSLY here — not on the composed
 /// future's first poll — so two same-tick submit events cannot both pass the
 /// guard. The controller's drop guard (engaged when the future first polls)
 /// resets the flag exactly once, on every exit path including cancellation.
 pub(crate) fn begin_attempt(controller: &FormController) -> bool {
-    if controller.is_submitting().get() {
-        return false;
+    let acquired = controller.is_submitting().try_maybe_update(|in_flight| {
+        if *in_flight {
+            (false, false)
+        } else {
+            *in_flight = true;
+            (true, true)
+        }
+    });
+    // None only for a disposed/poisoned signal — impossible for a live
+    // headless controller (the closure cannot panic); defensively treated
+    // as not-acquired so failure degrades to "attempt rejected".
+    if acquired.unwrap_or(false) {
+        controller.submitted().set(true);
+        true
+    } else {
+        false
     }
-    controller.is_submitting().set(true);
-    controller.submitted().set(true);
-    true
 }
 
 /// Drives one attempt's composed future to its caller-facing outcome:
@@ -382,6 +401,101 @@ mod glue {
         assert!(
             !begin_attempt(&controller),
             "in-flight guard must reject attempts while submitting"
+        );
+    }
+
+    /// Losing callers leave NO trace: a rejected attempt neither flips
+    /// `submitted` nor disturbs the winner's in-flight acquisition.
+    #[test]
+    fn cas_loser_leaves_no_trace() {
+        use reactive_graph::traits::Set;
+        let controller = controller_with_valid_email();
+        controller.is_submitting().set(true);
+        assert!(!begin_attempt(&controller), "loser must be rejected");
+        assert!(
+            !controller.submitted().get(),
+            "`submitted` byte-identical after the loser: still false"
+        );
+        assert!(
+            controller.is_submitting().get(),
+            "in-flight flag unchanged by the loser"
+        );
+    }
+
+    /// Cross-thread CAS pin (spec Domain 3): T threads × R rounds, every
+    /// round start synchronized on a barrier, ZERO sleeps. Exactly ONE
+    /// caller may win `begin_attempt` per round; the unique winner settles
+    /// via the real `finish_attempt` path so the flag restores through the
+    /// actual drop-guard between rounds. Deterministic assertion under ANY
+    /// interleaving: either the acquisition is atomic or the per-round
+    /// counts expose the TOCTOU.
+    ///
+    /// Two barriers per round keep the accounting airtight: `started`
+    /// releases the round together, and `attempted` guarantees every thread
+    /// has contested THIS round before the winner settles — without it, a
+    /// fast winner's drop-guard reset could leak into a lagging contender's
+    /// same-round attempt (an artifact of the harness, not of the CAS).
+    #[test]
+    fn cas_exactly_one_winner_per_round_across_threads() {
+        use std::sync::{Arc, Barrier, Mutex};
+
+        const THREADS: usize = 8;
+        const ROUNDS: usize = 16;
+
+        let controller = Arc::new(controller_with_valid_email());
+        let winners: Arc<Mutex<Vec<usize>>> = Arc::default();
+        let started = Arc::new(Barrier::new(THREADS));
+        let attempted = Arc::new(Barrier::new(THREADS));
+
+        let workers: Vec<_> = (0..THREADS)
+            .map(|_| {
+                let controller = controller.clone();
+                let winners = winners.clone();
+                let started = started.clone();
+                let attempted = attempted.clone();
+                std::thread::spawn(move || {
+                    for round in 0..ROUNDS {
+                        started.wait();
+                        // Losers perform NOTHING after receiving false.
+                        if begin_attempt(&controller) {
+                            winners.lock().unwrap().push(round);
+                            // THE WINNER settles only after every contender
+                            // has contested this round, through the real
+                            // drop-guard path so the flag restores strictly
+                            // between rounds.
+                            attempted.wait();
+                            let outcome: SubmitOutcome<(), std::convert::Infallible> =
+                                block_on(finish_attempt(&controller, |_snap| async { Ok(()) }));
+                            assert!(
+                                matches!(outcome, SubmitOutcome::Success(())),
+                                "winner's attempt must settle cleanly"
+                            );
+                        } else {
+                            attempted.wait();
+                        }
+                    }
+                })
+            })
+            .collect();
+        for worker in workers {
+            worker.join().expect("no worker panics");
+        }
+
+        let wins = winners.lock().unwrap().clone();
+        let mut per_round = [0usize; ROUNDS];
+        for round in &wins {
+            per_round[*round] += 1;
+        }
+        assert!(
+            per_round.iter().all(|&count| count == 1),
+            "exactly ONE winner per round required; got {per_round:?} \
+             (total {} over {ROUNDS} rounds)",
+            wins.len()
+        );
+        assert_eq!(wins.len(), ROUNDS, "exactly R winners across R rounds");
+        assert!(
+            !controller.is_submitting().get(),
+            "flag fully restored after join"
         );
     }
 }
