@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{Map as JsonMap, Number as JsonNumber, Value as JsonValue};
 
-use crate::value::{Object, StringKey, Value};
+use crate::value::{Object, Value};
 
 fn to_json(v: &Value) -> Result<JsonValue, String> {
     Ok(match v {
@@ -46,8 +46,11 @@ fn from_json(jv: &JsonValue) -> Value {
         JsonValue::Object(map) => {
             let mut obj = Object::new();
             for (k, v) in map {
-                obj.entries
-                    .push((StringKey(k.as_str().into()), from_json(v)));
+                // DV-4: route through `Object::insert` so last-wins collapse
+                // holds for ANY conforming deserializer (including a future
+                // streaming `visit_map` delivering duplicates), independent
+                // of serde_json's upstream Map dedup.
+                obj.insert(k.as_str(), from_json(v));
             }
             Value::Object(obj)
         }
@@ -113,5 +116,47 @@ mod tests {
     #[test]
     fn non_finite_float_rejected_at_serialization() {
         assert!(to_json(&Value::F64(f64::NAN)).is_err());
+    }
+
+    /// DV-4 regression pin: JSON-text duplicate keys MUST collapse last-wins
+    /// into ONE `Object` entry, matching [`Object::insert`] semantics — for
+    /// ANY conforming deserializer, never only by upstream dedup accident.
+    #[test]
+    fn duplicate_json_text_keys_collapse_last_wins_flat() {
+        let v: Value = serde_json::from_str(r#"{"k":1,"k":2}"#).unwrap();
+        let Value::Object(obj) = &v else {
+            panic!("top level must be an object");
+        };
+        assert_eq!(obj.iter().count(), 1, "exactly one entry after collapse");
+        assert_eq!(
+            obj.get("k"),
+            Some(&Value::I64(2)),
+            "last delivered value wins"
+        );
+        let round_tripped = serde_json::to_value(&v).unwrap();
+        assert_eq!(
+            round_tripped,
+            serde_json::json!({ "k": 2 }),
+            "re-serialization equals the collapsed object"
+        );
+    }
+
+    /// DV-4 regression pin, nested form: duplicates inside a nested object
+    /// collapse too.
+    #[test]
+    fn duplicate_json_text_keys_collapse_last_wins_nested() {
+        let v: Value = serde_json::from_str(r#"{"outer":{"a":1,"a":2}}"#).unwrap();
+        let Value::Object(outer) = &v else {
+            panic!("top level must be an object");
+        };
+        let Some(Value::Object(inner)) = outer.get("outer") else {
+            panic!("nested value must be an object");
+        };
+        assert_eq!(inner.iter().count(), 1, "nested object holds one entry");
+        assert_eq!(
+            inner.get("a"),
+            Some(&Value::I64(2)),
+            "nested last delivered value wins"
+        );
     }
 }
