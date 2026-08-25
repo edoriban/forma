@@ -99,7 +99,11 @@ mod tests {
         obj.insert("k", Value::I64(2));
         let v = Value::Object(obj);
         let json = serde_json::to_value(&v).unwrap();
-        assert_eq!(json, serde_json::json!({"k": 2}), "serialization sees the last write");
+        assert_eq!(
+            json,
+            serde_json::json!({"k": 2}),
+            "serialization sees the last write"
+        );
         let back: Value = serde_json::from_value(json).unwrap();
         assert_eq!(back, v, "round-trip preserves the winning value");
     }

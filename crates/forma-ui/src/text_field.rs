@@ -180,7 +180,10 @@ mod tests {
         use forma_signals::{FieldPath, FormController, ValidateOn};
         let mut c = FormController::new(ValidateOn::Blur);
         let h = c
-            .register(FieldPath::key("email"), Box::new(forma_core::prelude::string()))
+            .register(
+                FieldPath::key("email"),
+                Box::new(forma_core::prelude::string()),
+            )
             .unwrap();
         assert_eq!(ssr_initial(&h), "");
     }

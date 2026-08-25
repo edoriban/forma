@@ -155,9 +155,8 @@ fn fss2_dropped_future_resets_is_submitting() {
     use std::task::{Context, Poll};
 
     let c = valid_form();
-    let mut fut = Box::pin(
-        c.on_submit(|_| std::future::pending::<Result<(), std::convert::Infallible>>()),
-    );
+    let mut fut =
+        Box::pin(c.on_submit(|_| std::future::pending::<Result<(), std::convert::Infallible>>()));
     let waker = futures::task::noop_waker();
     let mut cx = Context::from_waker(&waker);
     assert!(matches!(fut.as_mut().poll(&mut cx), Poll::Pending));

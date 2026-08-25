@@ -52,7 +52,9 @@ pub(crate) fn is_plausible_uuid(s: &str) -> bool {
     if groups.len() != 5 || !groups.iter().map(|g| g.len()).eq([8usize, 4, 4, 4, 12]) {
         return false;
     }
-    groups.iter().all(|g| g.chars().all(|c| c.is_ascii_hexdigit()))
+    groups
+        .iter()
+        .all(|g| g.chars().all(|c| c.is_ascii_hexdigit()))
 }
 
 #[cfg(test)]
