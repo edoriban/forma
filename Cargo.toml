@@ -9,7 +9,8 @@ license = "MIT"
 repository = "https://github.com/edoriban/formars"
 
 [workspace.dependencies]
-# intentionally near-empty registry; future crates use workspace = true
+# path+version registry for the five workspace crates; member manifests
+# reference these via `workspace = true`
 formars = { path = "crates/formars", version = "0.1.0" }
 formars-core = { path = "crates/formars-core", version = "0.1.0" }
 formars-derive = { path = "crates/formars-derive", version = "0.1.0" }

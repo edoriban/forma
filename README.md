@@ -2,10 +2,10 @@
 
 Schema validation for Rust. The core is builder-first and macro-free — schemas are values you compose by hand; `#[derive(FormSchema)]` is available as an opt-in convenience via the separate [`formars-derive`](crates/formars-derive) crate. The [`formars`](crates/formars) umbrella crate is the one-dependency entry point to all of it.
 
-> **Status: pre-0.1.** The core pieces are implemented — [`formars`](crates/formars) (the umbrella facade), `formars-core` (schemas,
+> **Status: version 0.1.0 pre-release.** The core pieces are implemented — [`formars`](crates/formars) (the umbrella facade), `formars-core` (schemas,
 > values, errors), `formars-signals` (headless reactive form controller),
 > `formars-ui` (Leptos components), and `formars-derive` (`#[derive(FormSchema)]`) —
-> but the API is still allowed to change before the first release.
+> but the API may still change before 1.0.
 >
 > Members and the `formars` umbrella move together; a breaking change anywhere bumps all five.
 
@@ -19,7 +19,6 @@ Depend on `formars`, import one line, pay per tier:
 
 ```rust
 use formars::prelude::*;
-use formars::formars_core::value::Object;
 
 let user = object()
     .field("email", string().email())

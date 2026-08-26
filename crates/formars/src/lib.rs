@@ -8,12 +8,12 @@
 //!
 //! ## Feature matrix
 //!
-//! | Tier                | Feature                 | Adds to your graph                          | Where to look next     |
-//! |---------------------|-------------------------|---------------------------------------------|------------------------|
-//! | Validate-only       | *(default)*             | nothing beyond `formars-core` (zero deps)   | [`formars_core`]       |
-//! | Headless controller | `signals`               | `reactive_graph` 0.2.x                      | `formars-signals`      |
-//! | Leptos UI           | `ui` (implies `signals`) | `leptos` 0.8.x + one shared `reactive_graph` copy | `formars-ui`     |
-//! | Derive macro        | `derive`                | syn/quote/proc-macro2 (host-side only)      | `formars-derive`       |
+//! | Tier                | Feature                  | Adds to your graph                               | Where to look next |
+//! |---------------------|--------------------------|--------------------------------------------------|--------------------|
+//! | Validate-only       | *(default)*              | nothing beyond `formars-core` (zero deps)        | `formars-core`     |
+//! | Headless controller | `signals`                | `reactive_graph` 0.2.x                           | `formars-signals`  |
+//! | Leptos UI           | `ui` (implies `signals`) | `leptos` 0.8.x + one shared `reactive_graph` copy | `formars-ui`      |
+//! | Derive macro        | `derive`                 | syn/quote/proc-macro2 (host-side only)           | `formars-derive`   |
 //!
 //! ## Tier 1 — validate-only (default)
 //!
@@ -24,15 +24,15 @@
 //! ```rust
 //! use formars::prelude::*;
 //!
-//! let signup = object()
+//! let user = object()
 //!     .field("email", string().min(8).email())
-//!     .field("age", coerced::<u32>()); // HTML inputs arrive as strings
+//!     .field("age", coerced::<u32>()); // HTML form inputs arrive as strings
 //!
-//! let mut input = formars::formars_core::value::Object::new();
+//! let mut input = Object::new();
 //! input.insert("email", Value::from("ada@example.com"));
 //! input.insert("age", Value::from("36"));
 //!
-//! let parsed = signup.parse(&input).expect("valid input");
+//! let parsed = user.parse(&input).expect("valid input");
 //! assert_eq!(parsed.get("age"), Some(&Value::I64(36)));
 //! ```
 //!

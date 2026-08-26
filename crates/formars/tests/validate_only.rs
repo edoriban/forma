@@ -109,8 +109,8 @@ fn core_prelude_inventory_is_the_closed_17_name_list() {
     }
 
     /// Nested carrier with exactly the `AsRef<ObjectSchema>` contract derive
-    /// companions rely on.
-    #[derive(Debug)]
+    /// companions rely on (companions are `Clone`, mirroring this).
+    #[derive(Debug, Clone)]
     struct Composed(ObjectSchema);
     impl AsRef<ObjectSchema> for Composed {
         fn as_ref(&self) -> &ObjectSchema {

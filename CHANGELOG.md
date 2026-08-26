@@ -7,15 +7,42 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Breaking changes
 
-- **derive**: `#[derive(FormSchema)]` now emits a compile error when two
-  non-skipped fields resolve to the SAME wire key (via `rename` or the field
-  identifier). Previously such collisions compiled silently and corrupted
-  lookups through last-write-wins object semantics; pre-1.0 this accepted
-  break was chosen deliberately. Rename one of the colliding fields with
-  `#[form(rename = "..")]`.
-- **ui**: `<TextField>`'s SSR `value` attribute now renders canonical strings
-  for numeric/bool initials (`Value::I64(7)` → `"7"`, `Value::Bool(true)` →
-  `"true"`); previously any non-string initial rendered as an empty input.
+- **core**: `#[derive(FormSchema)]`-generated companion structs are now
+  `Clone` (mirroring `ObjectSchema: Clone`, also new); hand-written
+  companions used as nested children must add `Clone`.
+- **derive**: `#[form(rename = "")]` is now a hard compile error spanned on
+  the empty literal ("the wire key would be the empty string"); previously it
+  was silently accepted, producing a wire key of `""`. Non-empty and dotted
+  renames (`rename = "a.b"`) remain legal.
+- **derive**: raw identifier fields (`r#type`) now derive their wire key as
+  `type` (the `r#` prefix is Rust syntax, never part of the object key);
+  previously the wire key was `"r#type"`.
+- **core**: `FieldPath`'s `Display` now quotes keys containing `.`, `[`, `]`,
+  a backtick, or the empty key with backtick-wrapping and doubled embedded
+  backticks, so structurally different paths can no longer render identically
+  (e.g. key `a.b` inside `user` no longer renders like nested `user.a.b`).
+  Separator-free keys render byte-identically to before; ROOT still renders
+  as the empty string.
+- **core**: the phantom `std` feature was removed from `formars-core`
+  (declared, defaulted, referenced by zero `cfg`s). Explicit
+  `--features std` now fails with "package does not have feature `std`";
+  default-feature consumers are unaffected.
+- **derive**: duplicate attribute errors name the offending key
+  ("duplicate `rename` attribute"); unknown multi-segment attribute keys
+  render their full source text (`unknown attribute \`foo::bar\``) instead of
+  a bare `::`; unit-struct rejection now spans the struct's identifier.
+
+### Added
+
+- **core**: the prelude additionally exports `Object`, `ToValue`,
+  `RefineRejection`, and `FieldMeta` — one-import programs can now build
+  objects, implement custom rules, and name introspection return types. The
+  facade's explicit export list is unchanged; its glob surface grows
+  additively.
+- **signals**: `apply_server_errors` captures known paths AND each field's
+  current value under ONE registry acquisition, eliminating the window where
+  a concurrent edit could anchor a server baseline to a value torn against a
+  stale grouping snapshot; all signal writes remain outside the lock.
 
 ### Fixed
 
@@ -41,3 +68,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   noise suggesting `#[derive(FormSchema)]` on the primitive; the derive crate
   docs now describe name-based mapping truthfully (aliases fall through to
   nested composition).
+
+### Changed
+
+- **core**: `NumberSchema`'s `Debug` output gains a `rules` field for parity
+  with `StringSchema` (`Debug` output is non-contractual).
