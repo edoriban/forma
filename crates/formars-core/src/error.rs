@@ -4,6 +4,11 @@
 //! ordered vector of [`FormaIssue`]s; each issue is addressed by a
 //! [`FieldPath`], tagged with a stable [`IssueCode`], and parameterized for
 //! deterministic display.
+//!
+//! [`FormaError`]: crate::error::FormaError
+//! [`FormaIssue`]: crate::error::FormaIssue
+//! [`FieldPath`]: crate::error::FieldPath
+//! [`IssueCode`]: crate::error::IssueCode
 
 use std::borrow::Cow;
 use std::fmt;
@@ -59,18 +64,26 @@ impl FieldPath {
 }
 
 /// A key renders raw iff it is non-empty and contains none of the trigger
-/// characters (`.`, `[`, `]`, `` ` ``); otherwise it renders backtick-wrapped
-/// with embedded backticks doubled (so wrapping is unambiguous). Raw segments
-/// are backtick-free by construction, which keeps the rendering injective:
-/// two structurally different paths can never produce identical output.
+/// characters (`.`, `[`, `]`, `` ` ``) and no control character; otherwise
+/// it renders backtick-wrapped with an unambiguous, prefix-free escape
+/// grammar: embedded backticks doubled, backslashes doubled, every control
+/// character written `\u{XX}` (lowercase hex, minimum two digits). Raw and
+/// quoted renderings are PREFIX-DISJOINT (backtick is always a trigger), so
+/// the mapping stays injective over structurally distinct keys.
 fn write_key(out: &mut String, k: &str) {
-    if k.is_empty() || k.contains(['.', '[', ']', '`']) {
+    use std::fmt::Write as _;
+    if k.is_empty() || k.contains(['.', '[', ']', '`']) || k.chars().any(char::is_control) {
         out.push('`');
         for ch in k.chars() {
-            if ch == '`' {
-                out.push('`');
+            match ch {
+                '`' => out.push_str("``"),
+                '\\' => out.push_str("\\\\"),
+                // Infallible on `String`; uniform lowercase `\u{XX}`, min 2 digits.
+                c if c.is_control() => {
+                    let _ = write!(out, "\\u{{{:02x}}}", c as u32);
+                }
+                c => out.push(c),
             }
-            out.push(ch);
         }
         out.push('`');
     } else {

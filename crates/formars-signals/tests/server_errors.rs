@@ -189,33 +189,33 @@ fn fss5_reset_kills_ghost_form_level_issue_then_apply_works_again() {
 
 use std::sync::Arc;
 
-fn leaked(s: String) -> &'static str {
-    Box::leak(s.into_boxed_str())
-}
-
 fn mixed_error(tag: &str) -> FormaError {
+    // Owned `Cow` messages (`format!(...).into()`): no `'static` leaks, and
+    // assertion semantics are unchanged (`Cow` compares by value).
+    let owned_issue = |path: FieldPath, code: IssueCode, msg: String| FormaIssue {
+        path,
+        code,
+        message: msg.into(),
+        params: Vec::new(),
+    };
     FormaError {
         issues: vec![
-            issue(
+            owned_issue(
                 FieldPath::key("a"),
                 IssueCode::Refine,
-                leaked(format!("server-a-{tag}")),
+                format!("server-a-{tag}"),
             ),
-            issue(
+            owned_issue(
                 FieldPath::key("b"),
                 IssueCode::Max,
-                leaked(format!("server-b-{tag}")),
+                format!("server-b-{tag}"),
             ),
-            issue(
+            owned_issue(
                 FieldPath::key("unknown"),
                 IssueCode::Refine,
-                leaked(format!("ghost-{tag}")),
+                format!("ghost-{tag}"),
             ),
-            issue(
-                FieldPath::ROOT,
-                IssueCode::Required,
-                leaked(format!("root-{tag}")),
-            ),
+            owned_issue(FieldPath::ROOT, IssueCode::Required, format!("root-{tag}")),
         ],
     }
 }
@@ -237,7 +237,7 @@ fn f3_stress_threads_alternate_edits_and_applies_quiescent_contract_holds() {
                 let ha = controller.field(&FieldPath::key("a")).unwrap();
                 for i in 0..ITERATIONS {
                     // alternating edit and apply
-                    ha.value().set(Value::from(leaked(format!("t{t}-i{i}"))));
+                    ha.value().set(Value::from(format!("t{t}-i{i}")));
                     controller.apply_server_errors(&mixed_error(&format!("t{t}-{i}")));
                 }
             })

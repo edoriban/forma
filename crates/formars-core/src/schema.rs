@@ -118,11 +118,11 @@ pub trait ObjectChild: fmt::Debug + Send + Sync + sealed::Sealed {
 }
 
 /// Backs an [`crate::types::object::ObjectSchema`] field slot with any schema
-/// whose composed representation is an [`ObjectSchema`] (e.g. a derive
-/// companion from the separate `formars-derive` crate).
+/// whose composed representation is an [`crate::types::object::ObjectSchema`]
+/// (e.g. a derive companion from the separate `formars-derive` crate).
 ///
 /// Pure delegation (NE-2): joined paths, inherited fail-fast and introspection
-/// come from the wrapped schema's own [`ObjectSchema::validate_at`] kernel —
+/// come from the wrapped schema's own [`crate::types::object::ObjectSchema::validate_at`] kernel —
 /// never reimplemented. The only contract is [`AsRef<ObjectSchema>`], so the
 /// adapter stays narrow while [`ObjectChild`] remains sealed.
 #[derive(Debug)]
@@ -131,7 +131,7 @@ pub struct Nested<S> {
 }
 
 impl<S> Nested<S> {
-    /// Wraps a schema whose composed representation is an [`ObjectSchema`].
+    /// Wraps a schema whose composed representation is an [`crate::types::object::ObjectSchema`].
     #[must_use]
     pub fn new(inner: S) -> Self {
         Self { inner }

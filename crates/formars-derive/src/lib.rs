@@ -1,5 +1,10 @@
 //! `formars-derive`: opt-in `#[derive(FormSchema)]` macro generating
-//! [`formars-core`] companion schemas.
+//! `formars-core` companion schemas.
+//!
+//! Snapshot regen protocol: trybuild `.stderr` snapshots regenerate ONLY on
+//! the pinned gate toolchain 1.98.0 (see `.github/workflows/ci.yml`) via
+//! `TRYBUILD=overwrite cargo test -p formars-derive --test ui`, diffs
+//! hand-reviewed; never per-toolchain.
 //!
 //! `formars-core` is builder-first and macro-free; this crate is the optional
 //! ergonomic layer that removes the hand-composition step. Deriving

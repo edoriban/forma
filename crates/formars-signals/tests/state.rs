@@ -370,6 +370,14 @@ fn display_str_matrix_covers_all_value_variants() {
         "F64 shortest-roundtrip losslessness"
     );
 
+    // Non-finite pins (spec Domain 2): std spellings, unchanged rendering.
+    h.value().set(Value::F64(f64::NAN));
+    assert_eq!(h.display_str(), "NaN", "F64(NAN) renders std \"NaN\"");
+    h.value().set(Value::F64(f64::INFINITY));
+    assert_eq!(h.display_str(), "inf", "F64(+inf) renders std \"inf\"");
+    h.value().set(Value::F64(f64::NEG_INFINITY));
+    assert_eq!(h.display_str(), "-inf", "F64(-inf) renders std \"-inf\"");
+
     h.value().set(Value::Bool(true));
     assert_eq!(h.display_str(), "true");
     h.value().set(Value::Bool(false));

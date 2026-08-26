@@ -8,10 +8,22 @@ use leptos::prelude::*;
 /// non-alphanumeric run collapses to a single `'-'`, prefixed with `formars-`.
 /// Alphanumeric Unicode passes through untouched.
 ///
+/// Exact collision classes (pinned by tests; the algorithm MUST NOT change —
+/// SSR-id stability outweighs exotic-key polish, and an explicit `id` prop is
+/// the escape hatch for every class):
+///
+/// 1. All-punctuation and empty inputs collapse to `"formars-"` WITH the
+///    trailing hyphen (`".."`, `"--"`, `"?"`, `""` → `"formars-"`) — the
+///    prefix is applied AFTER `trim_matches('-')`, so an empty trimmed core
+///    still carries the literal prefix.
+/// 2. Leading/trailing separator characters are STRIPPED, not preserved:
+///    `".x"`, `"-x"`, `"x"`, `"x."`, `"x-"` all → `"formars-x"`.
+/// 3. Interior non-alphanumeric runs collapse to one `'-'`
+///    (`"user.email"` ≡ `"user-email"` → `"formars-user-email"`).
+///
 /// Known limitations, both resolved by an explicit `id` prop:
 ///
-/// - Path-shape collisions: distinct paths can collide (`user.email` and
-///   `user-email` both become `formars-user-email`).
+/// - Path-shape collisions per class 3 above.
 /// - Same-handle duplication: binding ONE [`FieldHandle`] through TWO
 ///   `<TextField>` instances (without explicit ids) makes both derive the
 ///   IDENTICAL sanitized id, duplicating the `id=`/`for=` attribute pair in
@@ -172,6 +184,39 @@ mod tests {
         assert_eq!(sanitize_id("user.email"), sanitize_id("user-email"));
     }
 
+    /// Exact collision-class table (spec Domain 3): pins every documented
+    /// class representative against its exact rendering. If any of these go
+    /// red, `sanitize_id` was changed — an oracle violation, since the
+    /// algorithm is normatively frozen (SSR-id stability).
+    #[test]
+    fn sanitize_id_collision_class_table() {
+        // Class 1: all-punctuation/empty collapse to the bare prefix,
+        // trailing hyphen included (prefix applied after trim_matches('-')).
+        for input in ["..", "--", "?", ""] {
+            assert_eq!(
+                sanitize_id(input),
+                "formars-",
+                "class 1: {input:?} collapses to \"formars-\""
+            );
+        }
+        // Class 2: edge separators STRIPPED, not preserved.
+        for input in [".x", "-x", "x", "x.", "x-"] {
+            assert_eq!(
+                sanitize_id(input),
+                "formars-x",
+                "class 2: {input:?} strips to \"formars-x\""
+            );
+        }
+        // Class 3: interior separator runs collapse to one '-'.
+        for input in ["user.email", "user-email"] {
+            assert_eq!(
+                sanitize_id(input),
+                "formars-user-email",
+                "class 3: {input:?} collapses interior runs"
+            );
+        }
+    }
+
     /// T6/D6 pin of the SAME-HANDLE-through-two-`<TextField>`s case: both
     /// instances resolve `input_id` via
     /// `id.unwrap_or_else(|| sanitize_id(&field.path().to_string()))`, so one
@@ -193,11 +238,10 @@ mod tests {
             explicit.unwrap_or_else(|| sanitize_id(&h.path().to_string()))
         };
 
-        let without_ids_first = resolved(None);
-        let without_ids_second = resolved(None);
         assert_eq!(
-            without_ids_first, without_ids_second,
-            "one FieldHandle through two TextFields derives identical ids"
+            resolved(None),
+            "formars-email",
+            "derived id pins the actual sanitization"
         );
 
         let with_explicit_a = resolved(Some("field-a".to_string()));

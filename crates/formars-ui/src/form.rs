@@ -32,17 +32,23 @@ pub(crate) fn map_outcome<T, E>(result: Result<T, SubmitError<E>>) -> SubmitOutc
     }
 }
 
+/// Total guard-acquisition attempts: 1 initial + 7 retries under transient
+/// `RwLock` contention (`None` misreports).
+pub(crate) const BEGIN_ATTEMPT_MAX_TRIES: usize = 8;
+
 /// Begins one submit attempt: the in-flight guard (defensive double-submit
 /// shield complementing the reactively disabled button) followed by the
 /// synchronous `submitted` flip that activates visibility gates BEFORE any
 /// async work (FU-FM-2). Returns `false` when an attempt is already running.
 ///
-/// Acquisition is a single atomic CAS over `is_submitting`: the signal's
-/// internal write lock is held across read+write, so among arbitrarily many
-/// concurrent callers (the controller is `Sync`) EXACTLY ONE observes
-/// `false` and flips it; every loser observes `true`, returns `false` with
-/// no flag write and no notified reactive write. The `submitted` flip happens
-/// only for the unique winner, AFTER acquisition.
+/// Acquisition is an atomic CAS over `is_submitting`, retried up to
+/// [`BEGIN_ATTEMPT_MAX_TRIES`] under transient `RwLock` contention (`None`
+/// results): the signal's internal write lock is held across read+write, so
+/// among arbitrarily many concurrent callers (the controller is `Sync`)
+/// EXACTLY ONE observes `false` and flips it; every loser observes `true`,
+/// returns `false` IMMEDIATELY — definitive losses never spend retry budget —
+/// with no flag write and no notified reactive write. The `submitted` flip
+/// happens only for the unique winner, AFTER acquisition.
 ///
 /// `is_submitting` flips true SYNCHRONOUSLY here — not on the composed
 /// future's first poll — so two same-tick submit events cannot both pass the
@@ -58,17 +64,27 @@ pub(crate) fn map_outcome<T, E>(result: Result<T, SubmitError<E>>) -> SubmitOutc
 /// always polls the futures it accepts, so the guard engages immediately on
 /// every spawned attempt.
 pub(crate) fn begin_attempt(controller: &FormController) -> bool {
-    let acquired = controller.is_submitting().try_maybe_update(|in_flight| {
-        if *in_flight {
-            (false, false)
-        } else {
-            *in_flight = true;
-            (true, true)
+    let mut acquired = None;
+    for _ in 0..BEGIN_ATTEMPT_MAX_TRIES {
+        match controller.is_submitting().try_maybe_update(|in_flight| {
+            if *in_flight {
+                (false, false)
+            } else {
+                *in_flight = true;
+                (true, true)
+            }
+        }) {
+            Some(result) => {
+                acquired = Some(result);
+                break;
+            }
+            None => std::thread::yield_now(),
         }
-    });
-    // None only for a disposed/poisoned signal — impossible for a live
-    // headless controller (the closure cannot panic); defensively treated
-    // as not-acquired so failure degrades to "attempt rejected".
+    }
+    // None = RwLock `WouldBlock` contention misreport for Arc-backed storage
+    // (never disposal); retried up to the bounded BEGIN_ATTEMPT_MAX_TRIES
+    // budget before degrading to not-acquired, so exhaustion still surfaces
+    // as "attempt rejected".
     if acquired.unwrap_or(false) {
         controller.submitted().set(true);
         true
@@ -162,6 +178,16 @@ mod tests {
     use super::*;
     use formars_signals::{FieldPath, IssueCode};
     use std::borrow::Cow;
+
+    /// Budget contract (spec Domain 1): 8 = 1 initial attempt + 7 retries,
+    /// spent ONLY on transient `None` (`RwLock` contention misreports).
+    #[test]
+    fn begin_attempt_budget_is_exactly_eight_total_attempts() {
+        assert_eq!(
+            BEGIN_ATTEMPT_MAX_TRIES, 8,
+            "8 = 1 initial attempt + 7 retries under transient contention"
+        );
+    }
 
     fn sample_error() -> FormaError {
         FormaError {

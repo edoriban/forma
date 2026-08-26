@@ -172,6 +172,11 @@ fn f5_empty_key_renders_non_empty_unlike_root() {
         "",
         "an empty KEY never renders as empty output"
     );
+    assert_eq!(
+        empty.to_string(),
+        "``",
+        "empty key renders the bare open/close backtick pair"
+    );
 }
 
 #[test]
@@ -185,5 +190,135 @@ fn f5_backtick_keys_quoted_with_doubling() {
 #[test]
 fn f5_display_is_deterministic() {
     let p = FieldPath::key("user").join(Segment::Key("a.b".into()));
-    assert_eq!(p.to_string(), p.to_string());
+    let rendered = p.to_string();
+    assert_eq!(rendered, p.to_string(), "display is deterministic");
+    assert_eq!(
+        rendered, "user.`a.b`",
+        "mixed path: raw head, dot separator, quoted dotted tail"
+    );
+}
+
+// --------------------------------------------- F5 control-char escaping pins
+
+#[test]
+fn f5_control_char_key_renders_escaped_inside_quotes() {
+    // Exact byte sequence: backtick, '\', 'u', '{', '0', 'a', '}', backtick.
+    assert_eq!(
+        FieldPath::key("\n").to_string(),
+        "`\\u{0a}`",
+        "control chars never render raw; uniform lowercase \\u{{XX}} escapes"
+    );
+}
+
+#[test]
+fn f5_backslash_hole_real_newline_and_literal_lookalike_differ() {
+    // key₁ carries a REAL U+000A; key₂ is the literal text a\u{0a}.b built
+    // from backslash,u,{,0,a,},.,b. Both route to the quoted arm via '.'.
+    let real_newline = FieldPath::key("a\u{0a}.b");
+    let literal_lookalike = FieldPath::key("a\\u{0a}.b");
+
+    assert_eq!(
+        real_newline.to_string(),
+        "`a\\u{0a}.b`",
+        "real control renders ESCAPED (uniform \\u{{XX}})"
+    );
+    assert_eq!(
+        literal_lookalike.to_string(),
+        "`a\\\\u{0a}.b`",
+        "literal backslash DOUBLES, so the lookalike stays distinct"
+    );
+    assert_ne!(
+        real_newline.to_string(),
+        literal_lookalike.to_string(),
+        "the backslash hole is closed: structurally distinct keys never collide"
+    );
+}
+
+/// Injectivity property over an adversarial corpus (spec Domain 4): every
+/// ordered pair of DISTINCT keys renders differently — singly AND joined
+/// below `user.`. Positive lower bound: all renderings collected into a set
+/// whose length EQUALS the corpus length (not merely absence of duplicates).
+const CORPUS: [&str; 36] = [
+    "",
+    "a",
+    "email",
+    "user",
+    "A1",
+    "x9", // empty + plain alnum
+    ".",
+    "[",
+    "]",
+    "`",  // single triggers
+    "\\", // lone backslash
+    "\n",
+    "\t",
+    "\0",
+    "\r",
+    "\u{7f}",
+    "\u{85}",
+    "\u{9f}",  // C0, DEL, C1
+    "\\u{0a}", // literal \u-lookalike text
+    "a.b",
+    "a[0]",
+    "a`b",
+    "a\\b", // trigger mixtures
+    "a\nb",
+    ".\n",
+    "`\n", // control + trigger mixes
+    "café",
+    "日本語", // unicode alphanumerics
+    "user\nemail",
+    "a\u{0}.b", // long mixtures
+    "[0]",
+    "x[0]", // index masquerade family
+    " ",
+    "--",
+    "x.",
+    "-x", // punctuation edge classes
+];
+
+#[test]
+fn f5_rendering_is_injective_over_adversarial_corpus() {
+    use std::collections::HashSet;
+
+    assert!(CORPUS.len() >= 30, "corpus lower bound (spec Domain 4)");
+
+    let singles: Vec<String> = CORPUS
+        .iter()
+        .map(|k| FieldPath::key(k).to_string())
+        .collect();
+
+    // Positive lower bound anchor: set cardinality equals corpus cardinality.
+    let unique: HashSet<&String> = singles.iter().collect();
+    assert_eq!(
+        unique.len(),
+        CORPUS.len(),
+        "all {} corpus renderings are pairwise distinct (set-len anchor)",
+        CORPUS.len()
+    );
+
+    // Every ORDERED distinct pair differs, singly and joined under `user.`.
+    for i in 0..CORPUS.len() {
+        for j in 0..CORPUS.len() {
+            if i == j {
+                continue;
+            }
+            assert_ne!(
+                singles[i], singles[j],
+                "keys {i:?} ({:?}) and {j:?} ({:?}) render identically",
+                CORPUS[i], CORPUS[j]
+            );
+            let joined_i = FieldPath::key("user")
+                .join(Segment::Key(CORPUS[i].into()))
+                .to_string();
+            let joined_j = FieldPath::key("user")
+                .join(Segment::Key(CORPUS[j].into()))
+                .to_string();
+            assert_ne!(
+                joined_i, joined_j,
+                "joined forms of {:?} and {:?} render identically",
+                CORPUS[i], CORPUS[j]
+            );
+        }
+    }
 }

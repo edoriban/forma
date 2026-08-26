@@ -92,6 +92,10 @@ impl FieldHandle {
     /// `ToString`; `Bool` → `"true"`/`"false"`; `Null`/`Array`/`Object` →
     /// `""`.
     ///
+    /// Non-finite `F64` values render the Rust std spellings — `"NaN"`,
+    /// `"inf"`, `"-inf"` — and these spellings re-coerce via `f64::from_str`
+    /// inside `CoercedSchema::<f64>`, so the rendered state round-trips.
+    ///
     /// This is THE single display seam consumed by formars-ui (SSR attribute
     /// and pushback effect alike) — never add a second coercion site.
     #[must_use]

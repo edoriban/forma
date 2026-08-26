@@ -14,7 +14,8 @@
 //! misleading "already been disposed" message or silently treats a transient
 //! lock failure the same way. This crate treats any `None` from such an
 //! accessor as "not usable" and degrades defensively — see `begin_attempt`
-//! in `formars-ui`, which treats a `try_maybe_update` `None` as not-acquired.
+//! in `formars-ui`, which retries transiently (bounded) before treating
+//! persistent `None` as not-acquired.
 //! Guidance: NEVER rely on `get()` after owner disposal; drop the handle
 //! instead.
 //!

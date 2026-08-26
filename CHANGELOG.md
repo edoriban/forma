@@ -21,8 +21,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   a backtick, or the empty key with backtick-wrapping and doubled embedded
   backticks, so structurally different paths can no longer render identically
   (e.g. key `a.b` inside `user` no longer renders like nested `user.a.b`).
+  Control-character keys join the quoted arm as well, escaped uniformly as
+  `\u{XX}` (lowercase hex, minimum two digits) with backslashes doubled, so
+  raw control bytes never leak into error markup or logs and the rendering
+  stays injective over structurally distinct keys.
   Separator-free keys render byte-identically to before; ROOT still renders
-  as the empty string.
+  as the empty string. USER-VISIBLE RENDERING CHANGE for keys containing
+  control characters.
 - **core**: the phantom `std` feature was removed from `formars-core`
   (declared, defaulted, referenced by zero `cfg`s). Explicit
   `--features std` now fails with "package does not have feature `std`";
@@ -46,6 +51,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **ui**: submit-guard acquisition no longer spuriously rejects under
+  transient RwLock contention — bounded retry (≤7 `yield_now` spins),
+  rejection only on definitive loss or budget exhaustion.
 - Submit-attempt acquisition (`begin_attempt`) is now a single atomic
   compare-and-update over the in-flight flag: among concurrent callers on a
   shared controller exactly one wins; losing callers leave no flag writes and

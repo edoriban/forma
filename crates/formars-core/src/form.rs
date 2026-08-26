@@ -7,6 +7,10 @@
 //! - [`FormBridge`] connects a Rust value to the erased [`Value`] tree in both
 //!   directions (typed-parse bridging), so plain primitives can participate in
 //!   derived reconstruction without deriving anything.
+//!
+//! [`FormSchema`]: crate::form::FormSchema
+//! [`FormBridge`]: crate::form::FormBridge
+//! [`Value`]: crate::value::Value
 
 use crate::schema::{DynSchema, Schema};
 use crate::value::Value;

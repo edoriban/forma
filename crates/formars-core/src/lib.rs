@@ -11,8 +11,8 @@
 //! assert!(s.parse(&"ab".to_string()).is_ok());
 //! ```
 //!
-//! Every builder simultaneously implements the typed [`Schema`] trait and the
-//! object-safe [`DynSchema`] erased view from one internal representation, so
+//! Every builder simultaneously implements the typed [`schema::Schema`] trait and the
+//! object-safe [`schema::DynSchema`] erased view from one internal representation, so
 //! both views always agree. Object schemas compose any builder family into
 //! struct-shaped validation over an ordered [`Value::Object`]:
 //!
@@ -24,7 +24,7 @@
 //!     .field("age", coerced::<u32>());
 //! ```
 //!
-//! [`Value::Object`]: formars_core::value::Value::Object
+//! [`Value::Object`]: crate::value::Value::Object
 
 /// String-to-type coercion schemas.
 pub mod coerce;
