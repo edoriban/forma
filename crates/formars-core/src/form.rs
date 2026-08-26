@@ -35,6 +35,15 @@ pub trait FormSchema {
 /// from validated output. Total on validated outputs — returns `None` only on
 /// an invariant breach or wrong-variant input.
 ///
+/// # f32 narrowing precondition
+///
+/// For `f32`, narrowing in [`from_validated`](Self::from_validated) is sound
+/// ONLY when the `F64` input originated from
+/// [`to_form_value`](Self::to_form_value) of an `f32` (the validated-output
+/// precondition): the widening was lossless, so the inverse cast recovers the
+/// exact original bits. Arbitrary `F64` inputs NOT produced that way may be
+/// truncated or rounded by the narrowing cast.
+///
 /// Implemented exactly for the v0 supported-type matrix (`String`, `bool`,
 /// `i8..i64`, `u8..u32`, `f32`, `f64`). `u64`/`usize` are deliberately
 /// excluded, mirroring the [`crate::value::ToValue`] fidelity rules (DV-1):
@@ -72,6 +81,12 @@ macro_rules! bridge_int {
 bridge_int!(i8, i16, i32, i64, u8, u16, u32);
 
 impl FormBridge for f32 {
+    /// # Narrowing precondition
+    ///
+    /// `from_validated` narrows `F64` back to `f32`; this is sound ONLY when
+    /// the `F64` originated from [`FormBridge::to_form_value`] of an `f32`
+    /// (validated output — the widening was lossless, so the exact original
+    /// bits are recovered). Arbitrary `F64` inputs may truncate or round.
     fn to_form_value(&self) -> Value {
         Value::F64(f64::from(*self))
     }
@@ -79,6 +94,8 @@ impl FormBridge for f32 {
     fn from_validated(v: &Value) -> Option<Self> {
         // Exact recovery despite the cast lint: `to_form_value` widened the
         // f32 losslessly into F64, so narrowing recovers the original bits.
+        // Precondition documented on this impl: sound only for validated
+        // outputs of `to_form_value`; arbitrary F64 inputs may truncate.
         #[allow( // exact inverse of a lossless widening
             clippy::cast_possible_truncation,
             reason = "to_form_value widened the f32 losslessly into F64; narrowing recovers the original bits"

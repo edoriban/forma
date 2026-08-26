@@ -136,11 +136,12 @@ impl<T: NumberValue> Default for NumberSchema<T> {
     }
 }
 
-/// Structural debug output.
+/// Structural debug output (field parity with [`crate::types::string::StringSchema`]).
 impl<T: NumberValue> std::fmt::Debug for NumberSchema<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("NumberSchema")
             .field("checks", &self.checks)
+            .field("rules", &self.rules)
             .field("fail_fast", &self.fail_fast)
             .finish_non_exhaustive()
     }
@@ -422,6 +423,10 @@ impl<T: NumberValue> crate::schema::ObjectChild for NumberSchema<T> {
 
     fn meta(&self) -> &FieldMeta {
         &self.meta
+    }
+
+    fn clone_boxed(&self) -> Box<dyn crate::schema::ObjectChild> {
+        Box::new(self.clone())
     }
 }
 impl<T: NumberValue> crate::schema::sealed::Sealed for NumberSchema<T> {}

@@ -319,3 +319,140 @@ fn os3_nested_absent_key_reports_required_at_depth() {
     assert_eq!(err.issues[0].code, IssueCode::Required);
     assert_eq!(err.issues[0].path.to_string(), "outer.qty");
 }
+
+// ------------------------------------------------------------------ T1 (ER-6)
+
+#[test]
+fn t1_scalar_into_declared_object_field_yields_one_type_mismatch_at_joined_path() {
+    let schema = object().field("child", object().field("x", string()));
+    let input = obj(&[("child", Value::I64(7))]);
+    let err = schema.parse(&input).unwrap_err();
+    assert_eq!(
+        err.issues.len(),
+        1,
+        "exactly one issue for a scalar into a declared-object field"
+    );
+    assert_eq!(err.issues[0].code, IssueCode::TypeMismatch);
+    assert_eq!(err.issues[0].path.to_string(), "child");
+    assert_ne!(err.issues[0].path, FieldPath::ROOT);
+}
+
+#[test]
+fn t1_scalar_into_declared_object_field_under_parent_fail_fast_stops_at_first() {
+    let schema = object()
+        .fail_fast()
+        .field("first", string().min(10))
+        .field("child", object().field("x", string()));
+    let input = obj(&[
+        ("first", Value::from("too-short")),
+        ("child", Value::I64(7)),
+    ]);
+    let err = schema.parse(&input).unwrap_err();
+    assert_eq!(err.issues.len(), 1, "fail-fast stops before reaching child");
+    assert_eq!(err.issues[0].path.to_string(), "first");
+
+    // Same schema, only the child violated: exactly ONE TypeMismatch, no
+    // accumulation beyond it.
+    let input2 = obj(&[
+        ("first", Value::from("long-enough-name")),
+        ("child", Value::I64(7)),
+    ]);
+    let err2 = schema.parse(&input2).unwrap_err();
+    assert_eq!(err2.issues.len(), 1);
+    assert_eq!(err2.issues[0].code, IssueCode::TypeMismatch);
+    assert_eq!(err2.issues[0].path.to_string(), "child");
+}
+
+// ------------------------------------------------------------- F1 clone contract
+
+fn rich_schema() -> formars_core::types::ObjectSchema {
+    object()
+        .field("sub", object().field("email", string().email()))
+        .field("name", string().min(3).refine(|s: &str| s.contains('a')))
+        .field("age", formars_core::coerce::coerced::<u32>())
+}
+
+fn sample_inputs() -> Vec<Object> {
+    vec![
+        obj(&[
+            (
+                "sub",
+                Value::Object(obj(&[("email", Value::from("a@b.c"))])),
+            ),
+            ("name", Value::from("ada")),
+            ("age", Value::from("42")),
+        ]),
+        Object::new(),
+        obj(&[
+            ("sub", Value::Object(obj(&[("email", Value::from("nope"))]))),
+            ("name", Value::I64(7)),
+            ("age", Value::Null),
+        ]),
+    ]
+}
+
+#[test]
+fn f1_clone_validates_identically_to_source() {
+    let original = rich_schema();
+    let clone = original.clone();
+    for input in sample_inputs() {
+        let a = original.parse(&input);
+        let b = clone.parse(&input);
+        match (a, b) {
+            (Ok(pa), Ok(pb)) => {
+                assert_eq!(
+                    pa.iter().map(|(k, _)| k.as_ref()).collect::<Vec<_>>(),
+                    pb.iter().map(|(k, _)| k.as_ref()).collect::<Vec<_>>(),
+                );
+                assert_eq!(pa, pb, "Ok payloads must be equal");
+            }
+            (Err(ea), Err(eb)) => {
+                assert_eq!(
+                    ea.issues, eb.issues,
+                    "Err issue vectors equal INCLUDING ORDER"
+                );
+            }
+            (a, b) => panic!("original and clone disagree: {a:?} vs {b:?}"),
+        }
+    }
+}
+
+#[test]
+fn f1_builder_reuse_isolation_between_clones() {
+    fn declared_keys(s: &formars_core::types::ObjectSchema) -> Vec<String> {
+        match &s.shape().kind {
+            K::Object { fields } => fields.iter().map(|f| f.key.to_string()).collect::<Vec<_>>(),
+            other => panic!("expected Object kind, got {other:?}"),
+        }
+    }
+
+    let base = object().field("name", string());
+    let variant_a = base.clone().field("only_a", string());
+    let variant_b = base.clone().field("only_b", string());
+
+    assert_eq!(declared_keys(&variant_a), vec!["name", "only_a"]);
+    assert_eq!(declared_keys(&variant_b), vec!["name", "only_b"]);
+
+    // Pre-clone schema untouched by post-clone builder calls.
+    let base_keys = {
+        let boxed: Box<dyn DynSchema> = Box::new(base);
+        let keys: Vec<String> = match &boxed.shape().kind {
+            K::Object { fields } => fields.iter().map(|f| f.key.to_string()).collect(),
+            other => panic!("expected Object kind, got {other:?}"),
+        };
+        keys
+    };
+    assert_eq!(base_keys, vec!["name"]);
+}
+
+#[test]
+fn f1_shape_cache_correct_across_clone() {
+    let original = rich_schema();
+    let original_shape = original.shape().clone(); // populate the OnceLock FIRST
+    let clone = original.clone();
+    assert_eq!(
+        &original_shape,
+        clone.shape(),
+        "fresh cache re-derives an identical tree"
+    );
+}

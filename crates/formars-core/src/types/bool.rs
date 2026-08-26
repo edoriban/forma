@@ -254,6 +254,10 @@ impl crate::schema::ObjectChild for BoolSchema {
     fn meta(&self) -> &FieldMeta {
         &self.meta
     }
+
+    fn clone_boxed(&self) -> Box<dyn crate::schema::ObjectChild> {
+        Box::new(self.clone())
+    }
 }
 impl crate::schema::sealed::Sealed for BoolSchema {}
 

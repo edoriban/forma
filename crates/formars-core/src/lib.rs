@@ -1,5 +1,6 @@
-//! Aggregated entry point: the `formars` umbrella crate — one dependency, one import, pay per tier.
-//! Schema validation for Rust, composed with a fluent builder API.
+//! `formars-core`: typed schema primitives with a dyn-safe erased view.
+//! Fluent builder schemas for validation, coercion and introspection — the
+//! kernel every other `formars*` crate builds on.
 //!
 //! A schema is a *value* you build, compose, and pass around:
 //!
@@ -17,7 +18,6 @@
 //!
 //! ```rust
 //! use formars_core::prelude::*;
-//! use formars_core::value::{Object, ToValue};
 //!
 //! let user = object()
 //!     .field("name", string().min(1).label("Full name"))

@@ -58,6 +58,26 @@ impl FieldPath {
     }
 }
 
+/// A key renders raw iff it is non-empty and contains none of the trigger
+/// characters (`.`, `[`, `]`, `` ` ``); otherwise it renders backtick-wrapped
+/// with embedded backticks doubled (so wrapping is unambiguous). Raw segments
+/// are backtick-free by construction, which keeps the rendering injective:
+/// two structurally different paths can never produce identical output.
+fn write_key(out: &mut String, k: &str) {
+    if k.is_empty() || k.contains(['.', '[', ']', '`']) {
+        out.push('`');
+        for ch in k.chars() {
+            if ch == '`' {
+                out.push('`');
+            }
+            out.push(ch);
+        }
+        out.push('`');
+    } else {
+        out.push_str(k);
+    }
+}
+
 impl fmt::Display for FieldPath {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut out = String::new();
@@ -67,7 +87,7 @@ impl fmt::Display for FieldPath {
                     if !out.is_empty() {
                         out.push('.');
                     }
-                    out.push_str(k);
+                    write_key(&mut out, k);
                 }
                 Segment::Index(i) => {
                     out.push('[');

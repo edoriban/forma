@@ -1,10 +1,13 @@
 use formars_core::error::FormaError;
-use formars_core::form::{FormSchema, Schema};
-use formars_core::schema::{DynSchema, FieldMeta, ShapeNode};
+use formars_core::form::FormSchema;
+use formars_core::schema::{DynSchema, FieldMeta, Schema, ShapeNode};
 use formars_core::value::Value;
 use formars_derive::FormSchema;
 
 // Hand-written companion WITHOUT a FormBridge impl for `Inner` (M2 pin).
+// Mirrors the generated-companion contract (`#[derive(Clone)]`, added when
+// companions became Clone alongside `ObjectSchema: Clone`).
+#[derive(Clone)]
 pub struct InnerSchema {
     object: ::formars_core::types::ObjectSchema,
 }

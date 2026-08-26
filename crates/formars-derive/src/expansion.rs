@@ -22,6 +22,7 @@
 
 use proc_macro2::{Span, TokenStream};
 use quote::{format_ident, quote_spanned};
+use syn::ext::IdentExt as _;
 use syn::spanned::Spanned as _;
 use syn::{Data, DeriveInput, Fields, Ident, Type};
 
@@ -56,7 +57,7 @@ fn check_item_shape(input: &DeriveInput) -> Result<(), syn::Error> {
                  only plain named-field structs are supported",
             )),
             Fields::Unit => Err(syn::Error::new(
-                data.fields.span(),
+                input.ident.span(),
                 "`#[derive(FormSchema)]` does not support unit structs in v0; \
                  only plain named-field structs are supported",
             )),
@@ -95,10 +96,12 @@ impl FieldPlan {
             return Ok(None);
         };
         let attrs = FieldAttrs::parse(&field.attrs)?;
+        // `unraw`: a raw identifier `r#type` names the wire key `type`
+        // (the r# prefix is Rust syntax, never part of the object key).
         let key = attrs
             .rename
             .as_ref()
-            .map_or_else(|| ident.to_string(), syn::LitStr::value);
+            .map_or_else(|| ident.unraw().to_string(), syn::LitStr::value);
         Ok(Some(Self {
             ident,
             key,
@@ -393,6 +396,7 @@ pub(crate) fn expand(input: &DeriveInput) -> Result<TokenStream, syn::Error> {
 
     let expanded = quote_spanned! { Span::call_site()=>
         #[automatically_derived]
+        #[derive(Clone)]
         #[doc = #doc]
         #vis struct #companion {
             object: ::formars_core::types::ObjectSchema,

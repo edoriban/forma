@@ -19,6 +19,25 @@ pub(crate) struct FieldAttrs {
 
 const VALID_KEYS: &str = "schema, rename, skip, label, description, placeholder";
 
+/// Full source text of an attribute key path: leading-`::` prefix plus the
+/// segments joined with `::` (so qualified keys like `foo::bar` render
+/// readably in diagnostics instead of a bare `::` fallback).
+fn attr_key_text(path: &syn::Path) -> String {
+    let mut text = String::new();
+    if path.leading_colon.is_some() {
+        text.push_str("::");
+    }
+    text.push_str(
+        &path
+            .segments
+            .iter()
+            .map(|s| s.ident.to_string())
+            .collect::<Vec<_>>()
+            .join("::"),
+    );
+    text
+}
+
 impl FieldAttrs {
     /// Parses every `#[form(...)]` attribute on one field. Unknown keys,
     /// duplicates, malformed values and `skip` conflicts are hard errors
@@ -28,32 +47,38 @@ impl FieldAttrs {
         for attr in attrs.iter().filter(|a| a.path().is_ident("form")) {
             attr.parse_nested_meta(|meta| {
                 let key_span = meta.path.span();
-                let key = meta
-                    .path
-                    .get_ident()
-                    .map_or_else(|| "::".to_string(), std::string::ToString::to_string);
+                let key = attr_key_text(&meta.path);
                 match key.as_str() {
                     "schema" => set(
+                        "schema",
                         &mut out.schema,
                         meta.value()?.parse::<syn::Expr>()?,
                         key_span,
                     ),
-                    "rename" => set(
-                        &mut out.rename,
-                        meta.value()?.parse::<syn::LitStr>()?,
-                        key_span,
-                    ),
+                    "rename" => {
+                        let lit = meta.value()?.parse::<syn::LitStr>()?;
+                        if lit.value().is_empty() {
+                            return Err(syn::Error::new(
+                                lit.span(),
+                                "#[form(rename = \"\")] is invalid: the wire key would be the empty string",
+                            ));
+                        }
+                        set("rename", &mut out.rename, lit, key_span)
+                    }
                     "label" => set(
+                        "label",
                         &mut out.label,
                         meta.value()?.parse::<syn::LitStr>()?,
                         key_span,
                     ),
                     "description" => set(
+                        "description",
                         &mut out.description,
                         meta.value()?.parse::<syn::LitStr>()?,
                         key_span,
                     ),
                     "placeholder" => set(
+                        "placeholder",
                         &mut out.placeholder,
                         meta.value()?.parse::<syn::LitStr>()?,
                         key_span,
@@ -102,10 +127,14 @@ impl FieldAttrs {
     }
 }
 
-/// Sets `slot`, rejecting a duplicate key at the key's own span.
-fn set<T>(slot: &mut Option<T>, value: T, span: proc_macro2::Span) -> syn::Result<()> {
+/// Sets `slot`, rejecting a duplicate key at the second occurrence's key
+/// span, naming the offending attribute key in the message.
+fn set<T>(key: &str, slot: &mut Option<T>, value: T, span: proc_macro2::Span) -> syn::Result<()> {
     if slot.is_some() {
-        return Err(syn::Error::new(span, "duplicate attribute"));
+        return Err(syn::Error::new(
+            span,
+            format!("duplicate `{key}` attribute"),
+        ));
     }
     *slot = Some(value);
     Ok(())
@@ -204,6 +233,36 @@ mod tests {
     }
 
     #[test]
+    fn c1_multi_segment_unknown_key_renders_full_path() {
+        let f: syn::Field = parse_quote! {
+            #[form(foo::bar = 1)]
+            name: String
+        };
+        let syn::Result::Err(err) = parse_field(&f) else {
+            panic!("unknown qualified key must be rejected");
+        };
+        let msg = err.to_string();
+        assert!(
+            msg.contains("`foo::bar`"),
+            "renders the FULL source text of the path: {msg}"
+        );
+        assert!(
+            !msg.contains("expected one of: ::"),
+            "no bare `::` fallback may leak into the rendered name: {msg}"
+        );
+        for k in [
+            "schema",
+            "rename",
+            "skip",
+            "label",
+            "description",
+            "placeholder",
+        ] {
+            assert!(msg.contains(k), "still lists valid key {k}: {msg}");
+        }
+    }
+
+    #[test]
     fn c1_duplicate_key_errors() {
         let f: syn::Field = parse_quote! {
             #[form(rename = "a")]
@@ -213,7 +272,11 @@ mod tests {
         let syn::Result::Err(err) = parse_field(&f) else {
             panic!("duplicate must be rejected");
         };
-        assert!(err.to_string().contains("duplicate"), "{err}");
+        let msg = err.to_string();
+        assert!(
+            msg.contains("duplicate `rename` attribute"),
+            "names the offending key: {msg}"
+        );
     }
 
     #[test]

@@ -124,3 +124,48 @@ fn sc6_equals_rejects_mismatched_value_with_one_issue() {
     assert_eq!(err.issues.len(), 1);
     assert_eq!(err.issues[0].code, IssueCode::BoolEquals);
 }
+
+// ------------------------------------------------------ F6 Debug parity
+
+#[test]
+fn f6_refined_number_debug_shows_rules_checks_and_fail_fast() {
+    let s = number::<f64>().min(0.0).refine(|v: &f64| v.is_finite());
+    let rendered = format!("{s:?}");
+    assert!(
+        rendered.contains("checks"),
+        "Debug shows checks: {rendered}"
+    );
+    assert!(
+        rendered.contains("fail_fast"),
+        "Debug shows fail_fast: {rendered}"
+    );
+    assert!(
+        rendered.contains("rules"),
+        "Debug must include the rules field for parity with StringSchema: {rendered}"
+    );
+    // Non-empty rules entry: the refine closure appears under `rules`.
+    let rules_start = rendered.find("rules").expect("rules present");
+    let rules_section = &rendered[rules_start..];
+    assert!(
+        rules_section.contains("refine-0"),
+        "non-empty rules listing expected: {rules_section}"
+    );
+}
+
+#[test]
+fn f6_plain_number_debug_stable_plus_empty_rules() {
+    let s = number::<i64>();
+    let rendered = format!("{s:?}");
+    assert!(rendered.contains("checks"));
+    assert!(rendered.contains("fail_fast"));
+    assert!(
+        rendered.contains("rules"),
+        "empty rules field present: {rendered}"
+    );
+    // Nothing else new beyond checks/fail_fast/rules.
+    let without = rendered.replace(['(', ')', ' '], "");
+    assert_eq!(
+        without,
+        "NumberSchema{checks:[],rules:[],fail_fast:false,..}"
+    );
+}

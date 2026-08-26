@@ -1,5 +1,5 @@
-//! Aggregated entry point: the `formars` umbrella crate — one dependency, one import, pay per tier.
-//! Opt-in `#[derive(FormSchema)]` for [`formars-core`] schemas.
+//! `formars-derive`: opt-in `#[derive(FormSchema)]` macro generating
+//! [`formars-core`] companion schemas.
 //!
 //! `formars-core` is builder-first and macro-free; this crate is the optional
 //! ergonomic layer that removes the hand-composition step. Deriving
@@ -98,13 +98,23 @@
 //!
 //! For `struct X { .. }` the derive emits, in the same module:
 //!
-//! - `pub struct XSchema` owning its composed `::formars_core::ObjectSchema`,
-//!   with an `XSchema::new()` constructor;
+//! - `struct XSchema` taking the STRUCT'S visibility (a private struct yields
+//!   a private companion; `pub` yields `pub`) owning its composed
+//!   `::formars_core::ObjectSchema`, with an `XSchema::new()` constructor;
 //! - `impl Schema for XSchema` (`Input = Output = X`) — bridges `X` to an
 //!   object via `FormBridge`, validates, reconstructs;
 //! - `impl DynSchema for XSchema` — pure pass-through to the composed object;
 //! - `impl AsRef<::formars_core::ObjectSchema> for XSchema`;
 //! - `impl FormSchema for X` and `impl FormBridge for X`.
+//!
+//! # Companion naming (reserved suffix)
+//!
+//! `struct Foo` generates its companion `FooSchema` **in the same module**.
+//! If a pre-existing item named `FooSchema` is already in scope there, the
+//! generated definition collides with it and rustc reports E0428 ("the name
+//! `FooSchema` is defined multiple times") pointing INTO generated code,
+//! with no hint about the derive as the cause. Convention: never name items
+//! `{Struct}Schema` — that suffix is reserved for generated companions.
 //!
 //! Nested fields carry a **dual bound**: their type must implement BOTH
 //! `FormSchema` (composition) AND `FormBridge` (typed-parse bridging). A

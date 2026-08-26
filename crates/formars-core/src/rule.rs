@@ -61,8 +61,11 @@ pub struct RefineRejection {
 /// impls holding `!Send`/`!Sync` state; pre-1.0 this may change in a minor
 /// release.
 pub trait Rule<T: ?Sized>: fmt::Debug + Send + Sync {
-    /// Stable identifier surfaced in `shape()` and issue params. Borrowed
-    /// from the rule itself so generated names need no `'static` interning.
+    /// Stable identifier for the rule, used for diagnostics and `Debug`
+    /// output only. In v0 it is NOT embedded in issue params and NOT surfaced
+    /// via `shape()`; surfacing remains a candidate future contract change.
+    /// Borrowed from the rule itself so generated names need no `'static`
+    /// interning.
     fn name(&self) -> &str;
 
     /// Returns rejection data on failure; `None` on pass.

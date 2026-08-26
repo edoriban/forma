@@ -219,6 +219,32 @@ impl ObjectChild for ObjectSchema {
     fn meta(&self) -> &FieldMeta {
         &self.meta
     }
+
+    fn clone_boxed(&self) -> Box<dyn ObjectChild> {
+        Box::new(self.clone())
+    }
+}
+
+impl Clone for ObjectSchema {
+    /// Deep clone: every child is duplicated through its
+    /// [`ObjectChild::clone_boxed`] seam; the shape cache starts fresh (same
+    /// primitive precedent as the string/number/bool/coerced builders).
+    fn clone(&self) -> Self {
+        Self {
+            fields: self
+                .fields
+                .iter()
+                .map(|f| Field {
+                    name: f.name.clone(),
+                    meta: f.meta.clone(),
+                    child: f.child.clone_boxed(),
+                })
+                .collect(),
+            meta: self.meta.clone(),
+            fail_fast: self.fail_fast,
+            shape_cache: OnceLock::new(),
+        }
+    }
 }
 
 impl crate::schema::sealed::Sealed for ObjectSchema {}

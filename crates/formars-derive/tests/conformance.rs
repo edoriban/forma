@@ -129,6 +129,23 @@ struct Renamer {
     email: String,
 }
 
+// Dotted renames stay LEGAL; the ambiguity caveat lives in docs, not grammar.
+#[derive(FormSchema)]
+struct DottedRenamer {
+    #[form(rename = "a.b")]
+    email: String,
+}
+
+#[test]
+fn at2_dotted_rename_still_compiles_and_uses_the_literal_wire_key() {
+    let erased: Box<dyn DynSchema> = Box::new(DottedRenamerSchema::new());
+    let input = obj(&[("a.b", Value::from("a@b.co"))]);
+    assert!(
+        erased.validate_value(&input).is_empty(),
+        "the literal dotted string is the wire key"
+    );
+}
+
 #[test]
 fn at2_rename_round_trips_through_wire_key_everywhere() {
     let schema = RenamerSchema::new();
@@ -426,4 +443,165 @@ fn dp3_issue_order_is_declaration_order_across_repetitions() {
     // paths follow declaration order aa < bb < cc (dd valid)
     let paths: Vec<String> = expected.iter().map(|i| i.path.to_string()).collect();
     assert_eq!(paths, vec!["aa", "bb", "cc"]);
+}
+
+// ------------------------------------------------------------------ T2 floats
+
+#[derive(FormSchema)]
+struct Meters {
+    m: f32,
+    exact: f64,
+}
+
+#[test]
+fn t2_float_strings_coerce_in_and_reconstruct_exactly() {
+    let erased: Box<dyn DynSchema> = Box::new(MetersSchema::new());
+    let input = obj(&[("m", Value::from("1.5")), ("exact", Value::from("2.25"))]);
+    assert!(
+        erased.validate_value(&input).is_empty(),
+        "ToString path coerces"
+    );
+
+    // typed parse reconstructs the exact f32/f64 values
+    let parsed = <MetersSchema as Schema>::parse(
+        &MetersSchema::new(),
+        &Meters {
+            m: 1.5,
+            exact: 2.25,
+        },
+    )
+    .expect("typed parse succeeds");
+    assert_eq!(parsed.m.to_bits(), 1.5f32.to_bits());
+    assert_eq!(parsed.exact.to_bits(), 2.25f64.to_bits());
+}
+
+#[test]
+fn t2_non_coercible_string_yields_coerce_at_joined_path() {
+    let erased: Box<dyn DynSchema> = Box::new(MetersSchema::new());
+    let bad = obj(&[("m", Value::from("nope")), ("exact", Value::from("2.25"))]);
+    let issues = erased.validate_value(&bad);
+    assert_eq!(issues.len(), 1, "exactly one Coerce issue");
+    assert_eq!(issues[0].code, IssueCode::Coerce);
+    assert_eq!(issues[0].path.to_string(), "m");
+}
+
+#[test]
+fn t2_wire_asymmetry_strings_in_f64_out() {
+    // INBOUND: numeric fields travel as STRINGS (HTML-form currency — what
+    // `coerced::<T>()` consumes), even for f32/f64 fields.
+    let meters = Meters {
+        m: 0.1f32,
+        exact: f64::from_bits(0x3FD3_3333_3333_3333),
+    };
+    let wire = <Meters as ::formars_core::form::FormBridge>::to_form_value(&meters);
+    let Value::Object(o) = &wire else {
+        panic!("expected object wire form");
+    };
+    assert_eq!(o.get("m"), Some(&Value::String("0.1".into())));
+    assert!(matches!(o.get("exact"), Some(Value::String(_))));
+
+    // OUTBOUND: validated output carries I64/F64. `f32` recovers the widened
+    // bits EXACTLY through from_validated; f64 is lossless.
+    let mut validated = Object::new();
+    validated.insert("m", Value::F64(f64::from(0.1f32)));
+    validated.insert("exact", Value::F64(f64::from_bits(0x3FD3_3333_3333_3333)));
+
+    let back_m =
+        <f32 as ::formars_core::form::FormBridge>::from_validated(validated.get("m").expect("key"))
+            .expect("validated output reconstructs");
+    assert_eq!(back_m.to_bits(), 0.1f32.to_bits(), "bit-exact recovery");
+
+    let back_e = <f64 as ::formars_core::form::FormBridge>::from_validated(
+        validated.get("exact").expect("key"),
+    )
+    .expect("validated output reconstructs");
+    assert_eq!(
+        back_e.to_bits(),
+        f64::from_bits(0x3FD3_3333_3333_3333).to_bits()
+    );
+
+    // And the full derived round-trip agrees: typed parse of the struct whose
+    // bridging inserts are the string form reconstructs the same values.
+    let parsed = <MetersSchema as Schema>::parse(&MetersSchema::new(), &meters).expect("parses");
+    assert_eq!(parsed.m.to_bits(), meters.m.to_bits());
+    assert_eq!(parsed.exact.to_bits(), meters.exact.to_bits());
+}
+
+// --------------------------------------------------------------- T3 raw idents
+
+#[derive(FormSchema)]
+struct Raw {
+    r#type: String,
+}
+
+#[test]
+fn t3_raw_identifier_field_end_to_end() {
+    let erased: Box<dyn DynSchema> = Box::new(RawSchema::new());
+
+    // wire key is the raw identifier's source text WITHOUT the r# prefix
+    let input = obj(&[("type", Value::from("wifi"))]);
+    assert!(erased.validate_value(&input).is_empty());
+
+    // shape lists key `type`
+    let ShapeKind::Object { fields } = &erased.shape().kind else {
+        panic!("expected Object kind");
+    };
+    assert_eq!(fields[0].key.as_ref(), "type");
+
+    // typed parse reconstructs r#type
+    let parsed = <RawSchema as Schema>::parse(
+        &RawSchema::new(),
+        &Raw {
+            r#type: "wifi".into(),
+        },
+    )
+    .expect("typed parse succeeds");
+    assert_eq!(parsed.r#type, "wifi");
+}
+
+// ------------------------------------------------------------ T4 visibility
+
+/// T4 positive: `pub` struct yields a `pub` companion.
+#[derive(FormSchema)]
+pub struct PubStruct {
+    name: String,
+}
+
+#[derive(FormSchema)]
+pub(crate) struct CrateStruct {
+    name: String,
+}
+
+#[derive(FormSchema)]
+struct PrivateStruct {
+    name: String,
+}
+
+mod t4_cross_module_check {
+    use super::{CrateStructSchema, PubStructSchema};
+
+    #[allow(
+        dead_code,
+        reason = "visibility-tightness compile probe; never invoked"
+    )]
+    fn companions_visible_at_matching_tightness() {
+        // pub companion usable anywhere
+        let _pub_ok: PubStructSchema = PubStructSchema::new();
+        // pub(crate) companion visible crate-wide
+        let _crate_ok: CrateStructSchema = CrateStructSchema::new();
+        // NOTE: PrivateStructSchema is deliberately NOT referenced here — it
+        // is private to this test file's root module; leaking it through a
+        // pub signature is pinned by tests/ui/companion_visibility_leak.rs.
+    }
+}
+
+#[test]
+fn t4_companions_compile_at_struct_visibility() {
+    // same-module exposure at matching-tightness signatures
+    fn expose_pub(_: &PubStructSchema) {}
+    fn expose_crate(_: &CrateStructSchema) {}
+    fn expose_private(_: &PrivateStructSchema) {}
+    expose_pub(&PubStructSchema::new());
+    expose_crate(&CrateStructSchema::new());
+    expose_private(&PrivateStructSchema::new());
 }

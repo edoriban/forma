@@ -160,6 +160,10 @@ impl<T: FromStr + ToValue + 'static> crate::schema::ObjectChild for CoercedSchem
     fn meta(&self) -> &FieldMeta {
         &self.meta
     }
+
+    fn clone_boxed(&self) -> Box<dyn crate::schema::ObjectChild> {
+        Box::new(self.clone())
+    }
 }
 
 impl<T: FromStr + ToValue> crate::schema::sealed::Sealed for CoercedSchema<T> {}

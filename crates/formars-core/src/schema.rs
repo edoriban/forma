@@ -111,6 +111,10 @@ pub trait ObjectChild: fmt::Debug + Send + Sync + sealed::Sealed {
     fn shape_node(&self) -> ShapeNode;
     /// UI-facing metadata slots of the child (serves `ObjectSchema::field_meta`).
     fn meta(&self) -> &FieldMeta;
+    /// Crate-internal deep-clone seam powering `ObjectSchema: Clone`
+    /// (`Field.child` is `Box<dyn ObjectChild>`, which cannot be duplicated
+    /// without dispatch). Sealed: exactly six impls, all below.
+    fn clone_boxed(&self) -> Box<dyn ObjectChild>;
 }
 
 /// Backs an [`crate::types::object::ObjectSchema`] field slot with any schema
@@ -136,7 +140,7 @@ impl<S> Nested<S> {
 
 impl<S> ObjectChild for Nested<S>
 where
-    S: fmt::Debug + Send + Sync + AsRef<crate::types::object::ObjectSchema>,
+    S: fmt::Debug + Send + Sync + AsRef<crate::types::object::ObjectSchema> + Clone + 'static,
 {
     fn validate_at(
         &self,
@@ -153,6 +157,12 @@ where
 
     fn meta(&self) -> &FieldMeta {
         self.inner.as_ref().meta()
+    }
+
+    fn clone_boxed(&self) -> Box<dyn ObjectChild> {
+        Box::new(Self {
+            inner: self.inner.clone(),
+        })
     }
 }
 

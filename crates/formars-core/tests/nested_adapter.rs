@@ -11,8 +11,9 @@ use formars_core::types::ObjectSchema;
 use formars_core::value::{Object, Value};
 
 /// Stand-in for a derive companion: owns a composed `ObjectSchema` and lends
-/// it via `AsRef` — exactly the contract the generated code relies on.
-#[derive(Debug)]
+/// it via `AsRef` — exactly the contract the generated code relies on
+/// (generated companions are `Clone`, mirroring this).
+#[derive(Debug, Clone)]
 struct Composed(ObjectSchema);
 
 impl AsRef<ObjectSchema> for Composed {

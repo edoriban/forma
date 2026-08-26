@@ -1,0 +1,25 @@
+error[E0603]: struct `SecretSchema` is private
+  --> tests/ui/companion_visibility_leak.rs:18:33
+   |
+18 | pub fn leak_secret() -> hidden::SecretSchema {
+   |                                 ^^^^^^^^^^^^ private struct
+   |
+note: the struct `SecretSchema` is defined here
+  --> tests/ui/companion_visibility_leak.rs:11:14
+   |
+11 |     #[derive(FormSchema)]
+   |              ^^^^^^^^^^
+   = note: this error originates in the derive macro `FormSchema` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0603]: struct `SecretSchema` is private
+  --> tests/ui/companion_visibility_leak.rs:19:13
+   |
+19 |     hidden::SecretSchema::new()
+   |             ^^^^^^^^^^^^ private struct
+   |
+note: the struct `SecretSchema` is defined here
+  --> tests/ui/companion_visibility_leak.rs:11:14
+   |
+11 |     #[derive(FormSchema)]
+   |              ^^^^^^^^^^
+   = note: this error originates in the derive macro `FormSchema` (in Nightly builds, run with -Z macro-backtrace for more info)

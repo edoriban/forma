@@ -112,3 +112,78 @@ fn er5_order_stability_loop() {
         assert_eq!(codes.len(), 2, "refines skipped when builtins fail (RF-1)");
     }
 }
+
+// ------------------------------------------------------- F5 Display quoting
+
+use formars_core::error::{FieldPath, Segment};
+
+#[test]
+fn f5_normal_paths_render_byte_identically() {
+    assert_eq!(FieldPath::key("email").to_string(), "email");
+    let nested = FieldPath::key("user").join(Segment::Key("email".into()));
+    assert_eq!(nested.to_string(), "user.email");
+    let indexed = FieldPath::key("items")
+        .join(Segment::Index(2))
+        .join(Segment::Key("qty".into()));
+    assert_eq!(indexed.to_string(), "items[2].qty");
+}
+
+#[test]
+fn f5_dotted_key_disambiguated_from_nesting() {
+    let flat = FieldPath::key("user").join(Segment::Key("a.b".into()));
+    let deep = FieldPath::key("user")
+        .join(Segment::Key("a".into()))
+        .join(Segment::Key("b".into()));
+    assert_ne!(
+        flat.to_string(),
+        deep.to_string(),
+        "structurally different paths must never render identically"
+    );
+    assert_ne!(
+        flat.to_string(),
+        "user.a.b",
+        "flat key must not equal naive concatenation"
+    );
+    assert_eq!(deep.to_string(), "user.a.b");
+}
+
+#[test]
+fn f5_bracket_bearing_key_cannot_masquerade_as_index() {
+    let tricky = FieldPath::key("x[0]");
+    let real_index = FieldPath::key("x").join(Segment::Index(0));
+    assert_eq!(real_index.to_string(), "x[0]", "real index arm untouched");
+    assert_ne!(
+        tricky.to_string(),
+        real_index.to_string(),
+        "a key containing [0] must not render like an index segment"
+    );
+}
+
+#[test]
+fn f5_empty_key_renders_non_empty_unlike_root() {
+    assert_eq!(
+        FieldPath::ROOT.to_string(),
+        "",
+        "ROOT still renders as the empty string"
+    );
+    let empty = FieldPath::key("");
+    assert_ne!(
+        empty.to_string(),
+        "",
+        "an empty KEY never renders as empty output"
+    );
+}
+
+#[test]
+fn f5_backtick_keys_quoted_with_doubling() {
+    // Key("a`") -> `a`` (open, a, doubled backtick, close)
+    assert_eq!(FieldPath::key("a`").to_string(), "`a```");
+    // Key("`") -> four backticks: open + doubled content + close
+    assert_eq!(FieldPath::key("`").to_string(), "````");
+}
+
+#[test]
+fn f5_display_is_deterministic() {
+    let p = FieldPath::key("user").join(Segment::Key("a.b".into()));
+    assert_eq!(p.to_string(), p.to_string());
+}

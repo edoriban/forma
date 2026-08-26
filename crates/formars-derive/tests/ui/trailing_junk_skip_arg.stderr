@@ -1,0 +1,5 @@
+error: expected `,`
+ --> tests/ui/trailing_junk_skip_arg.rs:5:16
+  |
+5 |     #[form(skip(x))]
+  |                ^

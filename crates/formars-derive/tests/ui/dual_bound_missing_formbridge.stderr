@@ -1,35 +1,73 @@
-error[E0603]: trait `Schema` is private
- --> tests/ui/dual_bound_missing_formbridge.rs:2:38
-  |
-2 | use formars_core::form::{FormSchema, Schema};
-  |                                      ^^^^^^ private trait
-  |
-note: the trait `Schema` is defined here
- --> $WORKSPACE/crates/formars-core/src/form.rs
-  |
-  | use crate::schema::{DynSchema, Schema};
-  |                                ^^^^^^
-
-error[E0277]: `InnerSchema` is not a formars `Schema`
-  --> tests/ui/dual_bound_missing_formbridge.rs:56:19
+error[E0277]: the trait bound `InnerSchema: AsRef<ObjectSchema>` is not satisfied
+  --> tests/ui/dual_bound_missing_formbridge.rs:68:5
    |
-56 |     type Schema = InnerSchema;
-   |                   ^^^^^^^^^^^ expected a schema built from the `string()`, `number()`, `bool()` or `coerced()` builders
+68 |     inner: Inner,
+   |     ^^^^^ unsatisfied trait bound
    |
-help: the trait `Schema` is not implemented for `InnerSchema`
-  --> tests/ui/dual_bound_missing_formbridge.rs:8:1
+help: the trait `AsRef<ObjectSchema>` is not implemented for `InnerSchema`
+  --> tests/ui/dual_bound_missing_formbridge.rs:11:1
    |
- 8 | pub struct InnerSchema {
+11 | pub struct InnerSchema {
    | ^^^^^^^^^^^^^^^^^^^^^^
-   = help: the following other types implement trait `Schema`:
-             BoolSchema
-             CoercedSchema<T>
-             NumberSchema<T>
-             ObjectSchema
-             OuterSchema
-             StringSchema
-note: required by a bound in `formars_core::form::FormSchema::Schema`
-  --> $WORKSPACE/crates/formars-core/src/form.rs
+help: the trait `ObjectChild` is conditionally implemented for `Nested<S>`
+  --> $WORKSPACE/crates/formars-core/src/schema.rs
    |
-   |     type Schema: Schema<Input = Self, Output = Self> + DynSchema;
-   |                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `FormSchema::Schema`
+   | / impl<S> ObjectChild for Nested<S>
+   | | where
+   | |     S: fmt::Debug + Send + Sync + AsRef<crate::types::object::ObjectSchema> + Clone + 'static,
+   | |___________________________________-----------------------------------------__________________^
+   |                                     |
+   |                                     unsatisfied requirement introduced here: `InnerSchema: AsRef<ObjectSchema>`
+   = note: required for `Nested<InnerSchema>` to implement `ObjectChild`
+note: required by a bound in `ObjectSchema::field`
+  --> $WORKSPACE/crates/formars-core/src/types/object.rs
+   |
+   |     pub fn field<C>(mut self, name: &str, child: C) -> Self
+   |            ----- required by a bound in this associated function
+   |     where
+   |         C: ObjectChild + 'static,
+   |            ^^^^^^^^^^^ required by this bound in `ObjectSchema::field`
+
+error[E0277]: the trait bound `Inner: FormBridge` is not satisfied
+  --> tests/ui/dual_bound_missing_formbridge.rs:68:12
+   |
+68 |     inner: Inner,
+   |            ^^^^^ unsatisfied trait bound
+   |
+help: the trait `FormBridge` is not implemented for `Inner`
+  --> tests/ui/dual_bound_missing_formbridge.rs:54:1
+   |
+54 | struct Inner {
+   | ^^^^^^^^^^^^
+   = help: the following other types implement trait `FormBridge`:
+             Outer
+             bool
+             f32
+             f64
+             i16
+             i32
+             i64
+             i8
+           and $N others
+
+error[E0277]: the trait bound `Inner: FormBridge` is not satisfied
+  --> tests/ui/dual_bound_missing_formbridge.rs:68:5
+   |
+68 |     inner: Inner,
+   |     ^^^^^ unsatisfied trait bound
+   |
+help: the trait `FormBridge` is not implemented for `Inner`
+  --> tests/ui/dual_bound_missing_formbridge.rs:54:1
+   |
+54 | struct Inner {
+   | ^^^^^^^^^^^^
+   = help: the following other types implement trait `FormBridge`:
+             Outer
+             bool
+             f32
+             f64
+             i16
+             i32
+             i64
+             i8
+           and $N others

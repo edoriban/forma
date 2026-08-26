@@ -15,8 +15,6 @@ readme = "README.md"
 workspace = true
 
 [features]
-default = ["std"]
-std = []
 serde = ["dep:serde", "dep:serde_json"]
 
 [dependencies]

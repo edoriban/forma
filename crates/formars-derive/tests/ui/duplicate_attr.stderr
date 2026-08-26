@@ -1,4 +1,4 @@
-error: duplicate attribute
+error: duplicate `rename` attribute
  --> tests/ui/duplicate_attr.rs:6:12
   |
 6 |     #[form(rename = "b")]
