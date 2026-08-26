@@ -25,6 +25,10 @@ jobs:
       # `cargo test --workspace`, `cargo test -p formars --all-features`
       # (facade probes/doctests), and the derive trybuild UI suite
       # (dev-dependency, compiled under all-features).
+      # NOTE: trybuild snapshot stderr (diagnostic wording, spans, help
+      # blocks) is rustc-version-sensitive; snapshots are verified against
+      # the floating stable toolchain above — regenerate with
+      # `TRYBUILD=overwrite` whenever this job's toolchain moves.
       - run: cargo test --workspace --all-features
 
   facade-matrix:
@@ -61,3 +65,15 @@ jobs:
       # FOR wasm32); consumers targeting wasm MAY still use the derive.
       - run: cargo build --target wasm32-unknown-unknown --workspace --exclude formars-derive
       - run: cargo build --target wasm32-unknown-unknown -p formars --all-features
+
+  msrv:
+    name: msrv 1.88 (rust-version)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # stable
+        with:
+          toolchain: "1.88"
+      - uses: Swatinem/rust-cache@98c8021b550208e191a6a3145459bfc9fb29c4c0 # v2.8.0
+      - run: cargo check --workspace --all-features
+      - run: cargo test --workspace --all-features

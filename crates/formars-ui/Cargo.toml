@@ -21,6 +21,7 @@ reactive_graph = { workspace = true }
 
 [dev-dependencies]
 futures = { version = "0.3", default-features = false, features = ["executor", "std"] }
-# test-only edge: schema builders are not part of formars-signals' public re-exports;
-# the LIBRARY dependency graph still contains no formars-core node.
 formars-core = { workspace = true }
+# test-only edge: schema builders are not part of formars-signals' public
+# re-exports; the LIBRARY dependency graph contains no direct formars-core
+# node (library code reaches it only transitively via formars-signals).

@@ -123,7 +123,16 @@ impl FormController {
             for visible in visible_per_field {
                 out.extend(visible.get());
             }
-            out.extend(for_aggregate.unmatched_server.get());
+            // Bounded read instead of raw `.get()`: same contention
+            // hardening as every other controller-side signal read. This is
+            // safe INSIDE a memo derivation because `try_get` registers the
+            // dependency even when the read misses (reactive_graph tracks
+            // BEFORE attempting the read), so a fallback-extended aggregate
+            // is transient: the writer whose lock caused the miss marks this
+            // memo dirty again when its `.set()` completes, and the next
+            // read observes the real value. Yielding is bounded and cannot
+            // deadlock: signal writers never wait on memo computation.
+            out.extend(get_value_bounded(&for_aggregate.unmatched_server).unwrap_or_default());
             out
         });
         Self { inner, form_errors }
@@ -416,7 +425,7 @@ impl FormController {
             let fields = self.lock_fields();
             fields
                 .iter()
-                .map(|(p, c, _)| (p.clone(), Arc::clone(&c.schema), c.value.get()))
+                .map(|(p, c, _)| (p.clone(), Arc::clone(&c.schema), get_value(&c.value)))
                 .collect()
         };
         let mut issues = Vec::new();
@@ -437,7 +446,7 @@ impl FormController {
             let fields = self.lock_fields();
             fields
                 .iter()
-                .map(|(p, c, _)| (p.clone(), c.value.get()))
+                .map(|(p, c, _)| (p.clone(), get_value(&c.value)))
                 .collect()
         };
         FormSnapshot { entries }
@@ -531,8 +540,10 @@ impl FormController {
 /// `WouldBlock` while another thread holds the write lock mid-`.set()`
 /// (`reactive_graph` misreports contention as disposal — see the crate-level
 /// docs). The registry mutex does NOT exclude external `.set()` callers, so
-/// readers inside `apply_server_errors` retry instead of panicking: a failed
-/// attempt means "momentarily locked by a writer", never a torn read.
+/// every controller-side reader (`apply_server_errors`, `validate`,
+/// `snapshot`, and the `form_errors` aggregate memo) goes through
+/// [`get_value_bounded`] instead of panicking: a failed attempt means
+/// "momentarily locked by a writer", never a torn read.
 ///
 /// Retries are BOUNDED at [`GET_VALUE_MAX_ATTEMPTS`]. A `None` that persists
 /// past the bound is presumed genuine disposal ("not usable", per the
@@ -542,12 +553,26 @@ impl FormController {
 /// hides server issues that could not be verified against a live read.
 pub(crate) const GET_VALUE_MAX_ATTEMPTS: usize = 1024;
 
-pub(crate) fn get_value(signal: &ArcRwSignal<Value>) -> Value {
+/// Bounded retry read shared by every controller-side signal access:
+/// returns the current value, or `None` after [`GET_VALUE_MAX_ATTEMPTS`]
+/// contended attempts (presumed genuine disposal).
+///
+/// Uses `try_get`, which registers the reactive dependency even when the
+/// read itself fails (`reactive_graph` subscribes BEFORE attempting the
+/// read), so callers inside memo derivations remain wired to the writer
+/// whose contention caused the miss and recompute once it lands. The
+/// yield-spin is bounded and deadlock-free: signal writers never wait on
+/// reader-side computation.
+pub(crate) fn get_value_bounded<T: Clone + 'static>(signal: &ArcRwSignal<T>) -> Option<T> {
     for _ in 0..GET_VALUE_MAX_ATTEMPTS {
         if let Some(v) = signal.try_get() {
-            return v;
+            return Some(v);
         }
         std::thread::yield_now();
     }
-    Value::Null
+    None
+}
+
+pub(crate) fn get_value(signal: &ArcRwSignal<Value>) -> Value {
+    get_value_bounded(signal).unwrap_or(Value::Null)
 }
