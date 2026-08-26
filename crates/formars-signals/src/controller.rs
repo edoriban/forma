@@ -362,21 +362,39 @@ impl FormController {
     /// registered paths REPLACE that field's server cells; unknown or ROOT
     /// paths land in the form-level unmatched collection. A subsequent edit
     /// to a field hides its stale server issues until the next apply.
+    ///
+    /// The known-path list and every field's current value are captured under
+    /// ONE registry acquisition, so a concurrent edit can never anchor a
+    /// baseline to a value torn against a stale grouping snapshot; all signal
+    /// writes happen after the lock is released.
     pub fn apply_server_errors(&self, error: &FormaError) {
-        let known: Vec<FieldPath> = {
-            let fields = self.lock_fields();
-            fields.iter().map(|(p, _, _)| p.clone()).collect()
-        };
-        let (per_field, unmatched) = group_issues(error.issues.clone(), &known);
-
-        let updates: Vec<(ArcRwSignal<Vec<FormaIssue>>, ArcRwSignal<Value>, Value)> = {
+        /// One captured field: path, its server/baseline cells, value snapshot.
+        type Captured = (
+            FieldPath,
+            ArcRwSignal<Vec<FormaIssue>>,
+            ArcRwSignal<Value>,
+            Value,
+        );
+        // ONE acquisition: (path, server cell, baseline cell, value snapshot)
+        // captured atomically. Only clones and one RwSignal primitive read
+        // happen under the lock — no user/schema code, no memos, no awaits.
+        let captured: Vec<Captured> = {
             let fields = self.lock_fields();
             fields
                 .iter()
-                .map(|(_, c, _)| (c.server.clone(), c.server_baseline.clone(), c.value.get()))
+                .map(|(p, c, _)| {
+                    (
+                        p.clone(),
+                        c.server.clone(),
+                        c.server_baseline.clone(),
+                        get_value(&c.value),
+                    )
+                })
                 .collect()
         };
-        for (path, (server, baseline, current)) in known.into_iter().zip(updates) {
+        let known: Vec<FieldPath> = captured.iter().map(|(p, ..)| p.clone()).collect();
+        let (per_field, unmatched) = group_issues(error.issues.clone(), &known);
+        for (path, server, baseline, current) in captured {
             let matched = per_field.get(&path).cloned().unwrap_or_default();
             server.set(matched);
             baseline.set(current);
@@ -504,4 +522,32 @@ impl FormController {
             .lock()
             .expect("formars-signals registry mutex poisoned")
     }
+}
+
+/// Reads a field's current value without the disposal-misreport panic.
+///
+/// `ArcRwSignal::get` panics when its underlying `try_read` returns `None`,
+/// which happens not only on genuine disposal but also on a transient
+/// `WouldBlock` while another thread holds the write lock mid-`.set()`
+/// (`reactive_graph` misreports contention as disposal — see the crate-level
+/// docs). The registry mutex does NOT exclude external `.set()` callers, so
+/// readers inside `apply_server_errors` retry instead of panicking: a failed
+/// attempt means "momentarily locked by a writer", never a torn read.
+///
+/// Retries are BOUNDED at [`GET_VALUE_MAX_ATTEMPTS`]. A `None` that persists
+/// past the bound is presumed genuine disposal ("not usable", per the
+/// crate-level guidance) and degrades defensively: the read resolves to
+/// [`Value::Null`] instead of livelocking or panicking. Baselines anchored to
+/// [`Value::Null`] mismatch every real value, so the usual staleness gate
+/// hides server issues that could not be verified against a live read.
+pub(crate) const GET_VALUE_MAX_ATTEMPTS: usize = 1024;
+
+pub(crate) fn get_value(signal: &ArcRwSignal<Value>) -> Value {
+    for _ in 0..GET_VALUE_MAX_ATTEMPTS {
+        if let Some(v) = signal.try_get() {
+            return v;
+        }
+        std::thread::yield_now();
+    }
+    Value::Null
 }

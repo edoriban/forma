@@ -8,10 +8,14 @@ use leptos::prelude::*;
 /// non-alphanumeric run collapses to a single `'-'`, prefixed with `formars-`.
 /// Alphanumeric Unicode passes through untouched.
 ///
-/// Known limitation: distinct paths can collide (`user.email` and
-/// `user-email` both become `formars-user-email`). When two fields' paths
-/// differ only in non-alphanumeric characters, pass an explicit `id` prop
-/// to disambiguate.
+/// Known limitations, both resolved by an explicit `id` prop:
+///
+/// - Path-shape collisions: distinct paths can collide (`user.email` and
+///   `user-email` both become `formars-user-email`).
+/// - Same-handle duplication: binding ONE [`FieldHandle`] through TWO
+///   `<TextField>` instances (without explicit ids) makes both derive the
+///   IDENTICAL sanitized id, duplicating the `id=`/`for=` attribute pair in
+///   the document.
 pub(crate) fn sanitize_id(path: &str) -> String {
     let mut core = String::with_capacity(path.len());
     let mut prev_sep = false;
@@ -166,6 +170,42 @@ mod tests {
         // `user.email` and `user-email` collide; the explicit `id` prop is
         // the documented escape hatch.
         assert_eq!(sanitize_id("user.email"), sanitize_id("user-email"));
+    }
+
+    /// T6/D6 pin of the SAME-HANDLE-through-two-`<TextField>`s case: both
+    /// instances resolve `input_id` via
+    /// `id.unwrap_or_else(|| sanitize_id(&field.path().to_string()))`, so one
+    /// shared handle without explicit ids yields IDENTICAL ids (duplicated
+    /// `id=`/`for=`), while distinct explicit id props disambiguate.
+    #[test]
+    fn t6_same_handle_twice_duplicates_derived_id_explicit_ids_differ() {
+        use formars_signals::{FieldPath, FormController, ValidateOn};
+        let mut c = FormController::new(ValidateOn::Blur);
+        let h = c
+            .register(
+                FieldPath::key("email"),
+                Box::new(formars_core::prelude::string()),
+            )
+            .unwrap();
+
+        // Mirrors the component body's exact resolution expression.
+        let resolved = |explicit: Option<String>| {
+            explicit.unwrap_or_else(|| sanitize_id(&h.path().to_string()))
+        };
+
+        let without_ids_first = resolved(None);
+        let without_ids_second = resolved(None);
+        assert_eq!(
+            without_ids_first, without_ids_second,
+            "one FieldHandle through two TextFields derives identical ids"
+        );
+
+        let with_explicit_a = resolved(Some("field-a".to_string()));
+        let with_explicit_b = resolved(Some("field-b".to_string()));
+        assert_ne!(
+            with_explicit_a, with_explicit_b,
+            "distinct explicit id props disambiguate"
+        );
     }
 
     // DOM-level assertion of the serialized attribute is not possible in

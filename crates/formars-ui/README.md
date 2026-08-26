@@ -1,6 +1,6 @@
 # formars-ui
 
-Leptos **0.8** companion crate for [`formars-signals`](../formars-signals): the
+Leptos **0.8** companion crate for [`formars-signals`](https://docs.rs/formars-signals): the
 `use_form` hook, the `<Form>` submit wrapper, and the `<TextField>` field
 binding. All reactive state lives in `formars-signals`; this crate adds only
 the UI seam and passes `ArcRwSignal`/`ArcMemo` values straight through with

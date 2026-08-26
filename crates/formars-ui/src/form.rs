@@ -48,6 +48,15 @@ pub(crate) fn map_outcome<T, E>(result: Result<T, SubmitError<E>>) -> SubmitOutc
 /// future's first poll — so two same-tick submit events cannot both pass the
 /// guard. The controller's drop guard (engaged when the future first polls)
 /// resets the flag exactly once, on every exit path including cancellation.
+///
+/// # First-poll engagement and scheduler pairing
+///
+/// Because the [`SubmittingGuard`] engages only at the composed future's
+/// FIRST poll (not at composition time), a scheduler that composes the future
+/// but drops it BEFORE the first poll leaves `is_submitting` stuck `true` —
+/// the reset never runs. `spawn_local` is the documented safe pairing: it
+/// always polls the futures it accepts, so the guard engages immediately on
+/// every spawned attempt.
 pub(crate) fn begin_attempt(controller: &FormController) -> bool {
     let acquired = controller.is_submitting().try_maybe_update(|in_flight| {
         if *in_flight {

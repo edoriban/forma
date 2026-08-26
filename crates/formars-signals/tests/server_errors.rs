@@ -178,3 +178,138 @@ fn fss5_reset_kills_ghost_form_level_issue_then_apply_works_again() {
         "apply after reset must work normally"
     );
 }
+
+// ------------------------------------------------- F3 threaded stress pin
+//
+// Honest framing: atomicity of the capture inside `apply_server_errors` is
+// established by construction (ONE lock acquisition); this test pins the
+// OBSERVABLE consequences probabilistically — a microsecond tear window is
+// not deterministically catchable. It asserts the sequential contract still
+// holds verbatim after sustained interleaving from concurrent editors.
+
+use std::sync::Arc;
+
+fn leaked(s: String) -> &'static str {
+    Box::leak(s.into_boxed_str())
+}
+
+fn mixed_error(tag: &str) -> FormaError {
+    FormaError {
+        issues: vec![
+            issue(
+                FieldPath::key("a"),
+                IssueCode::Refine,
+                leaked(format!("server-a-{tag}")),
+            ),
+            issue(
+                FieldPath::key("b"),
+                IssueCode::Max,
+                leaked(format!("server-b-{tag}")),
+            ),
+            issue(
+                FieldPath::key("unknown"),
+                IssueCode::Refine,
+                leaked(format!("ghost-{tag}")),
+            ),
+            issue(
+                FieldPath::ROOT,
+                IssueCode::Required,
+                leaked(format!("root-{tag}")),
+            ),
+        ],
+    }
+}
+
+#[test]
+fn f3_stress_threads_alternate_edits_and_applies_quiescent_contract_holds() {
+    const THREADS: usize = 4;
+    const ITERATIONS: usize = 2000;
+
+    let mut c = FormController::new(ValidateOn::Blur);
+    c.register(FieldPath::key("a"), Box::new(string())).unwrap();
+    c.register(FieldPath::key("b"), Box::new(string())).unwrap();
+    let controller = Arc::new(c);
+
+    let handles: Vec<_> = (0..THREADS)
+        .map(|t| {
+            let controller = controller.clone();
+            std::thread::spawn(move || {
+                let ha = controller.field(&FieldPath::key("a")).unwrap();
+                for i in 0..ITERATIONS {
+                    // alternating edit and apply
+                    ha.value().set(Value::from(leaked(format!("t{t}-i{i}"))));
+                    controller.apply_server_errors(&mixed_error(&format!("t{t}-{i}")));
+                }
+            })
+        })
+        .collect();
+    for h in handles {
+        h.join().expect("storm thread: no panic/mutex-poison");
+    }
+
+    // Quiescent state: ONE final apply, then the sequential contract holds.
+    let final_err = mixed_error("final");
+    controller.apply_server_errors(&final_err);
+
+    let ha = controller.field(&FieldPath::key("a")).unwrap();
+    let hb = controller.field(&FieldPath::key("b")).unwrap();
+
+    // Each field's visible server cells equal the final error's known-path
+    // partition exactly (baseline anchored to the captured value, unedited).
+    let va = ha.visible_errors().get();
+    assert_eq!(va.len(), 1);
+    assert_eq!(va[0].message, "server-a-final");
+
+    let vb = hb.visible_errors().get();
+    assert_eq!(vb.len(), 1);
+    assert_eq!(vb[0].message, "server-b-final");
+
+    // unmatched equals expected unknown + ROOT partition of the final error.
+    // form_errors() is the AGGREGATE: visible per-field server cells plus the
+    // unmatched collection — so the full partition must appear exactly once.
+    let form_level = controller.form_errors().get();
+    let count_by_message = |m: &str| form_level.iter().filter(|i| i.message == m).count();
+    assert_eq!(
+        count_by_message("server-a-final"),
+        1,
+        "field a's known-path issue present once"
+    );
+    assert_eq!(
+        count_by_message("server-b-final"),
+        1,
+        "field b's known-path issue present once"
+    );
+    assert_eq!(
+        form_level
+            .iter()
+            .filter(|i| i.path == FieldPath::key("unknown"))
+            .count(),
+        1,
+        "exactly one unknown-path issue (unmatched)"
+    );
+    assert_eq!(
+        form_level
+            .iter()
+            .filter(|i| i.path == FieldPath::ROOT)
+            .count(),
+        1,
+        "exactly one ROOT issue (unmatched)"
+    );
+    assert_eq!(
+        form_level.len(),
+        4,
+        "nothing beyond the final apply's four issues"
+    );
+
+    // Editing any field hides exactly THAT field's server issues.
+    ha.value().set(Value::from("edited-after-storm"));
+    assert!(
+        ha.visible_errors().get().is_empty(),
+        "edit must hide field a's stale server issues"
+    );
+    assert_eq!(
+        hb.visible_errors().get()[0].message,
+        "server-b-final",
+        "field b's server issues unaffected by a's edit"
+    );
+}

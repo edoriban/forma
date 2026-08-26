@@ -1,11 +1,22 @@
-//! Aggregated entry point: the `formars` umbrella crate — one dependency, one import, pay per tier.
-//! Headless reactive form controller built directly on `reactive_graph`.
+//! `formars-signals`: headless reactive form controller built directly on
+//! `reactive_graph`.
 //!
 //! [`FormController`] owns an insertion-ordered registry of fields — one
 //! `ArcRwSignal<Value>` plus touched/dirty cells per field — and derives every
 //! other quantity as a pure `ArcMemo`. The crate is UI-agnostic: no Leptos,
 //! no effects, no spawner configuration. All public reactive types are from
 //! the Arc family (`Send + Sync`), safe for headless tests and SSR.
+//!
+//! # Disposed-owner hazard: accessors misreport
+//!
+//! `reactive_graph` accessors MISREPORT rather than error on disposed owners:
+//! a `get()`/`set()` on a signal whose owner was dropped either panics with a
+//! misleading "already been disposed" message or silently treats a transient
+//! lock failure the same way. This crate treats any `None` from such an
+//! accessor as "not usable" and degrades defensively — see `begin_attempt`
+//! in `formars-ui`, which treats a `try_maybe_update` `None` as not-acquired.
+//! Guidance: NEVER rely on `get()` after owner disposal; drop the handle
+//! instead.
 //!
 //! Async is confined to the composed future returned by
 //! [`FormController::on_submit`]; the consuming layer owns scheduling.

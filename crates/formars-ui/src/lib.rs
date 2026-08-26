@@ -1,6 +1,6 @@
-//! Aggregated entry point: the `formars` umbrella crate — one dependency, one import, pay per tier.
-//! Leptos 0.8 companion crate for `formars-signals`: the `use_form` hook,
-//! the `<Form>` submit wrapper, and the `<TextField>` field binding.
+//! `formars-ui`: Leptos 0.8 companion crate for `formars-signals` — the
+//! `use_form` hook, the `<Form>` submit wrapper, and the `<TextField>` field
+//! binding.
 //!
 //! # Dependency note: effects availability (FU-DEP-3)
 //!
