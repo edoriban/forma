@@ -113,7 +113,8 @@ impl fmt::Display for FieldPath {
     }
 }
 
-/// Stable, enumerable identifiers for every builtin constraint (ER-3).
+/// Stable, enumerable identifiers for every builtin constraint (ER-3), plus
+/// [`IssueCode::Custom`] for consumer-defined ones.
 ///
 /// Matchable today; additive variants in minor releases until v1 freezes it,
 /// so downstream matches should include a wildcard.
@@ -150,6 +151,15 @@ pub enum IssueCode {
     /// Declared object field is absent from the input object (purely
     /// structural: decided by key existence, never by the value found).
     Required,
+    /// Consumer-defined constraint identifier, carried verbatim from a
+    /// [`RefineRejection`](crate::rule::RefineRejection).
+    ///
+    /// Builtins never produce this variant; it exists so a consumer running
+    /// several custom rules can tell them apart. [`IssueCode::Refine`]
+    /// collapses every rule into one code, which defeats keying a
+    /// translation table off [`IssueCode`]. The payload is an opaque
+    /// consumer namespace: formars neither interprets nor validates it.
+    Custom(Box<str>),
 }
 
 /// Key of one entry in [`IssueParams`].
@@ -415,6 +425,19 @@ mod tests {
         let i = issue(p.clone(), IssueCode::Required, "missing");
         assert_eq!(i.path, p);
         assert_eq!(i.path.to_string(), "email");
+    }
+
+    #[test]
+    fn custom_codes_stay_distinguishable_from_each_other_and_from_refine() {
+        let decimal = IssueCode::Custom("decimal".into());
+        let currency = IssueCode::Custom("currency".into());
+        assert_ne!(decimal, currency);
+        assert_ne!(decimal, IssueCode::Refine);
+        let key = match &decimal {
+            IssueCode::Custom(name) => format!("validation.{name}"),
+            _ => "validation.generic".to_owned(),
+        };
+        assert_eq!(key, "validation.decimal");
     }
 
     #[test]

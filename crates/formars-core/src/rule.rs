@@ -18,7 +18,7 @@
 //!     fn validate(&self, value: &str) -> Option<RefineRejection> {
 //!         if value.starts_with(self.0) { None } else {
 //!             Some(RefineRejection {
-//!                 code: Some(IssueCode::Refine),
+//!                 code: Some(IssueCode::Custom("starts_with".into())),
 //!                 message: Cow::Borrowed("must start with the expected char"),
 //!                 params: Vec::new(),
 //!             })
@@ -30,7 +30,11 @@
 //! use formars_core::types::string;
 //! let schema = string().min(2).rule(StartsWith('a'));
 //! assert!(schema.parse(&"apple".to_string()).is_ok());
-//! assert!(schema.parse(&"pear".to_string()).is_err());
+//!
+//! // The rule's own code survives to the issue, so a translation table can
+//! // key off it without ever reading `message`.
+//! let err = schema.parse(&"pear".to_string()).unwrap_err();
+//! assert_eq!(err.issues[0].code, IssueCode::Custom("starts_with".into()));
 //! ```
 
 use std::borrow::Cow;
@@ -42,7 +46,9 @@ use crate::error::{IssueCode, IssueParams};
 /// accumulation and fail-fast policy.
 #[derive(Clone, Debug, PartialEq)]
 pub struct RefineRejection {
-    /// `None` maps to [`IssueCode::Refine`]; custom codes allowed.
+    /// `None` maps to [`IssueCode::Refine`], which every rule shares. Carry
+    /// an [`IssueCode::Custom`] instead to keep several custom rules
+    /// distinguishable by code alone.
     pub code: Option<IssueCode>,
     /// Human-readable rejection message.
     pub message: Cow<'static, str>,

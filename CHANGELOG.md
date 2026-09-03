@@ -39,6 +39,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **core**: `IssueCode::Custom(Box<str>)` carries a consumer-defined
+  constraint identifier verbatim from `RefineRejection`. Builtins never
+  produce it, and the three rule kernels already passed `rejection.code`
+  through untouched, so custom rules are no longer all collapsed into
+  `IssueCode::Refine` — a translation table keyed off `IssueCode` can now
+  tell two custom rules on the same field apart without parsing `message`.
+  Additive: downstream matches already needed a wildcard.
 - **core**: the prelude additionally exports `Object`, `ToValue`,
   `RefineRejection`, and `FieldMeta` — one-import programs can now build
   objects, implement custom rules, and name introspection return types. The
